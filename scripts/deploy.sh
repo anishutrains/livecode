@@ -8,9 +8,16 @@ exec 2> >(tee -a /home/ubuntu/deploy-error.log >&2)
 echo "Starting deployment at $(date)"
 echo "Current working directory: $(pwd)"
 
+# Fix permissions
+sudo chown -R ubuntu:ubuntu .
+find . -type d -exec chmod 755 {} \;
+find . -type f -exec chmod 644 {} \;
+chmod +x scripts/deploy.sh
+
 # Create aws_config.py from template
 echo "Creating aws_config.py from template..."
 cp backend/config/aws_config.template.py backend/config/aws_config.py
+chmod 644 backend/config/aws_config.py
 
 # Install required packages
 sudo apt-get update
