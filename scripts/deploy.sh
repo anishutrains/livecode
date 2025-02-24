@@ -43,10 +43,13 @@ WorkingDirectory=/home/ubuntu/classroom-notes
 Environment="PATH=/home/ubuntu/classroom-notes/venv/bin"
 Environment="FLASK_APP=backend/app.py"
 Environment="FLASK_ENV=production"
-# These environment variables come from GitHub Actions
 Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
+Environment="PYTHONPATH=/home/ubuntu/classroom-notes"
+
+# Add debug output
+ExecStartPre=/bin/sh -c 'env >> /home/ubuntu/classroom-notes/logs/env.log'
 ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 --log-file /home/ubuntu/classroom-notes/logs/gunicorn.log --access-logfile /home/ubuntu/classroom-notes/logs/access.log --error-logfile /home/ubuntu/classroom-notes/logs/error.log backend.app:app
 
 [Install]
