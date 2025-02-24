@@ -1,0 +1,52 @@
+{
+    "family": "classroom-notes",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512",
+    "executionRoleArn": "arn:aws:iam::183295450467:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::183295450467:role/ecsTaskExecutionRole",
+    "containerDefinitions": [
+        {
+            "name": "classroom-notes",
+            "image": "183295450467.dkr.ecr.us-east-1.amazonaws.com/classroom-notes:latest",
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "FLASK_ENV",
+                    "value": "production"
+                }
+            ],
+            "secrets": [
+                {
+                    "name": "AWS_ACCESS_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:183295450467:parameter/classroom-notes/aws-access-key"
+                },
+                {
+                    "name": "AWS_SECRET_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:183295450467:parameter/classroom-notes/aws-secret-key"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/classroom-notes",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:5000/login || exit 1"],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            }
+        }
+    ]
+} 

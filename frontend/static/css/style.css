@@ -1,0 +1,43 @@
+.container {
+    max-width: 800px;
+}
+
+.container-fluid {
+    padding: 20px;
+}
+
+#note-editor {
+    min-height: 300px;
+    font-size: 16px;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.readonly {
+    background-color: #f8f9fa;
+}
+
+.class-info {
+    cursor: pointer;
+    padding: 5px 0;
+}
+
+.class-info:hover {
+    background-color: #f8f9fa;
+}
+
+.class-name {
+    font-weight: 500;
+}
+
+.share-section {
+    max-width: 500px;
+}
+
+.qr-code-container {
+    padding: 20px;
+}
+
+#save-status {
+    font-size: 0.9em;
+} 
