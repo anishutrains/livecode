@@ -6,8 +6,8 @@ venv/
 *.log
 
 # Environment files
-.env
-.env.*
+#.env
+#.env.*
 !.env.production.template
 !.env.example
 
