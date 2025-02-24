@@ -297,5 +297,12 @@ def debug_dynamodb():
             'environment': os.getenv('FLASK_ENV', 'development')
         }), 500
 
+@app.route('/health')
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'environment': os.getenv('FLASK_ENV', 'development')
+    })
+
 if __name__ == '__main__':
     app.run(debug=True) 

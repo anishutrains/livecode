@@ -8,6 +8,10 @@ exec 2> >(tee -a /home/ubuntu/deploy-error.log >&2)
 echo "Starting deployment at $(date)"
 echo "Current working directory: $(pwd)"
 
+# Create aws_config.py from template
+echo "Creating aws_config.py from template..."
+cp backend/config/aws_config.template.py backend/config/aws_config.py
+
 # Install required packages
 sudo apt-get update
 sudo apt-get install -y python3-pip python3-venv nginx
@@ -79,7 +83,26 @@ sudo nginx -t
 sudo systemctl daemon-reload
 sudo systemctl enable classroom-notes
 sudo systemctl restart classroom-notes
-sudo systemctl restart nginx
+
+# Wait for Gunicorn to start
+echo "Waiting for Gunicorn to start..."
+for i in {1..30}; do
+    if curl -s http://127.0.0.1:5000/health >/dev/null; then
+        echo "Gunicorn is running!"
+        break
+    fi
+    echo "Waiting... ($i/30)"
+    sleep 2
+done
+
+# Start nginx only if Gunicorn is running
+if curl -s http://127.0.0.1:5000/health >/dev/null; then
+    sudo systemctl restart nginx
+    echo "Nginx started successfully"
+else
+    echo "Error: Gunicorn is not running"
+    exit 1
+fi
 
 # Log deployment completion
 echo "Deployment completed at $(date)"
