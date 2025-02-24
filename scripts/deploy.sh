@@ -34,7 +34,10 @@ Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_REGION=${AWS_REGION}"
 
-ExecStart=/home/ubuntu/classroom-notes/venv/bin/python backend/app.py
+ExecStart=/home/ubuntu/classroom-notes/venv/bin/python -m flask run --host=0.0.0.0
+
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -50,6 +53,8 @@ server {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
@@ -60,7 +65,27 @@ sudo rm -f /etc/nginx/sites-enabled/default
 
 # Restart services
 sudo systemctl daemon-reload
+sudo systemctl enable classroom-notes
 sudo systemctl restart classroom-notes
-sudo systemctl restart nginx
+sudo nginx -t && sudo systemctl restart nginx
 
-echo "Deployment completed!" 
+# Wait for application to start
+echo "Waiting for application to start..."
+for i in {1..30}; do
+    if curl -s http://localhost:5000 > /dev/null; then
+        echo "Application is running!"
+        break
+    fi
+    echo "Waiting... ($i/30)"
+    sleep 2
+done
+
+# Check if application is running
+if curl -s http://localhost:5000 > /dev/null; then
+    echo "Deployment completed successfully!"
+else
+    echo "Deployment failed - application is not running"
+    echo "Checking service status:"
+    sudo systemctl status classroom-notes
+    exit 1
+fi 
