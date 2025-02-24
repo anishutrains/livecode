@@ -14,7 +14,7 @@ venv/
 # AWS
 .aws/
 backend/config/aws_config.py
-!backend/config/aws_config.template.py
+backend/config/aws_config_demo.py
 
 # Deployment
 /home/ubuntu/classroom-notes-temp/
