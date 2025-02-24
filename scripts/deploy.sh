@@ -64,6 +64,7 @@ ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
     --error-logfile /home/ubuntu/classroom-notes/logs/gunicorn/error.log \
     --capture-output \
     --enable-stdio-inheritance \
+    --pythonpath /home/ubuntu/classroom-notes \
     backend.app:app
 
 Restart=always
