@@ -7,7 +7,10 @@ echo "Starting deployment..."
 
 # Install required packages
 sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv nginx
+sudo apt-get install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt-get update
+sudo apt-get install -y python3.10 python3.10-venv python3.10-dev nginx
 
 # Create and setup application directory
 cd /home/ubuntu/classroom-notes
@@ -25,12 +28,16 @@ sudo chown ubuntu:ubuntu .env
 chmod 600 .env
 
 # Setup Python virtual environment
-python3 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
+
+# Create log directory
+sudo mkdir -p /var/log/classroom-notes
+sudo chown -R ubuntu:ubuntu /var/log/classroom-notes
 
 # Create simple systemd service
 sudo tee /etc/systemd/system/classroom-notes.service << EOF
@@ -43,15 +50,16 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/classroom-notes
 Environment="FLASK_APP=backend/app.py"
 Environment="FLASK_ENV=production"
-Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
-Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
-Environment="AWS_REGION=${AWS_REGION}"
+Environment="PYTHONUNBUFFERED=1"
 
 ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
     --workers 3 \
     --bind 0.0.0.0:5000 \
-    --access-logfile - \
-    --error-logfile - \
+    --log-file /var/log/classroom-notes/gunicorn.log \
+    --access-logfile /var/log/classroom-notes/access.log \
+    --error-logfile /var/log/classroom-notes/error.log \
+    --capture-output \
+    --log-level info \
     backend.app:app
 
 Restart=always

@@ -105,8 +105,12 @@ def setup_logging():
 
     # Configure root logger
     logging.basicConfig(
-        level=logging.INFO,  # Set default level to INFO
-        handlers=handlers
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('/var/log/classroom-notes/app.log')
+        ]
     )
 
     # Set specific log levels for different loggers
@@ -124,13 +128,10 @@ def setup_logging():
 # Initialize logger
 logger = setup_logging()
 
-# Add a startup log message
-logger.info(f"Application starting up in {os.environ.get('FLASK_ENV', 'development')} mode")
-
-# Add at the start of the file
-print("Starting application...")
-print(f"Python version: {sys.version}")
-print(f"Current working directory: {os.getcwd()}")
+# Add debug logging at startup
+logger.info("Starting application...")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Current directory: {os.getcwd()}")
 
 @app.route('/')
 def index():
