@@ -12,6 +12,18 @@ sudo apt-get install -y python3-pip python3-venv nginx
 # Create and setup application directory
 cd /home/ubuntu/classroom-notes
 
+# Create .env file with secrets
+sudo tee .env << EOF
+FLASK_ENV=production
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+AWS_DEFAULT_REGION=${AWS_REGION}
+EOF
+
+# Ensure proper permissions
+sudo chown ubuntu:ubuntu .env
+chmod 600 .env
+
 # Setup Python virtual environment
 python3 -m venv venv
 source venv/bin/activate

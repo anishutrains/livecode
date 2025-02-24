@@ -1,7 +1,13 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
-# AWS Configuration
+# Try to load from .env file if it exists
+env_path = Path(__file__).resolve().parent.parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
+
+# AWS Configuration - try environment variables first, then .env file
 AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
 AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 REGION = os.getenv('AWS_DEFAULT_REGION')
