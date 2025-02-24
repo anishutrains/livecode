@@ -52,9 +52,23 @@ Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 Environment="PYTHONPATH=/home/ubuntu/classroom-notes"
 
-# Log environment variables without using env command
-ExecStartPre=/bin/bash -c 'printenv > /home/ubuntu/classroom-notes/logs/env.log'
-ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 --log-file /home/ubuntu/classroom-notes/logs/gunicorn.log --access-logfile /home/ubuntu/classroom-notes/logs/access.log --error-logfile /home/ubuntu/classroom-notes/logs/error.log backend.app:app
+# Debug startup
+ExecStartPre=/bin/bash -c 'echo "Starting service at $(date)" >> /home/ubuntu/classroom-notes/logs/startup.log'
+ExecStartPre=/bin/bash -c 'printenv >> /home/ubuntu/classroom-notes/logs/env.log'
+ExecStartPre=/bin/bash -c 'pip freeze >> /home/ubuntu/classroom-notes/logs/requirements.log'
+
+ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
+    --workers 3 \
+    --bind 127.0.0.1:5000 \
+    --log-file /home/ubuntu/classroom-notes/logs/gunicorn.log \
+    --access-logfile /home/ubuntu/classroom-notes/logs/access.log \
+    --error-logfile /home/ubuntu/classroom-notes/logs/error.log \
+    --capture-output \
+    --enable-stdio-inheritance \
+    backend.app:app
+
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -91,9 +105,20 @@ sudo systemctl daemon-reload
 sudo systemctl enable classroom-notes
 sudo systemctl restart classroom-notes
 
-# Wait for Gunicorn to start
+# Add debug checks before waiting for Gunicorn
+echo "Checking service logs..."
+sudo journalctl -u classroom-notes -n 50 --no-pager
+echo "Checking gunicorn log..."
+tail -n 50 /home/ubuntu/classroom-notes/logs/gunicorn.log
+echo "Checking error log..."
+tail -n 50 /home/ubuntu/classroom-notes/logs/error.log
+
+# Wait for Gunicorn with better debugging
 echo "Waiting for Gunicorn to start..."
 for i in {1..30}; do
+    echo "Attempt $i: Checking Gunicorn status..."
+    sudo systemctl status classroom-notes --no-pager
+    
     if curl -s http://127.0.0.1:5000/health >/dev/null; then
         echo "Gunicorn is running!"
         break

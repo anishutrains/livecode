@@ -9,6 +9,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 from functools import lru_cache
 import time
+import sys
+import traceback
 
 app = Flask(__name__, 
     template_folder='../frontend/templates',
@@ -124,6 +126,11 @@ logger = setup_logging()
 
 # Add a startup log message
 logger.info(f"Application starting up in {os.environ.get('FLASK_ENV', 'development')} mode")
+
+# Add at the start of the file
+print("Starting application...")
+print(f"Python version: {sys.version}")
+print(f"Current working directory: {os.getcwd()}")
 
 @app.route('/')
 def index():
@@ -297,12 +304,35 @@ def debug_dynamodb():
             'environment': os.getenv('FLASK_ENV', 'development')
         }), 500
 
+@app.errorhandler(Exception)
+def handle_error(error):
+    print("Error occurred:", str(error))
+    print("Traceback:", traceback.format_exc())
+    return jsonify({
+        'error': str(error),
+        'traceback': traceback.format_exc()
+    }), 500
+
 @app.route('/health')
 def health_check():
-    return jsonify({
-        'status': 'healthy',
-        'environment': os.getenv('FLASK_ENV', 'development')
-    })
+    try:
+        # Test DynamoDB connection
+        table = dynamodb.Table('classroom_notes')
+        table.scan(Limit=1)
+        
+        return jsonify({
+            'status': 'healthy',
+            'environment': os.getenv('FLASK_ENV', 'development'),
+            'aws_region': REGION,
+            'has_aws_credentials': bool(AWS_ACCESS_KEY and AWS_SECRET_KEY)
+        })
+    except Exception as e:
+        print("Health check failed:", str(e))
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'environment': os.getenv('FLASK_ENV', 'development')
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 
