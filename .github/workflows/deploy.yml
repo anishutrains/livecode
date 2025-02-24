@@ -25,6 +25,6 @@ jobs:
           rm -rf /home/ubuntu/classroom-notes
           mkdir -p /home/ubuntu/classroom-notes
           cd /home/ubuntu/classroom-notes
-          git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git .
+          git clone https://github.com/anishutrains/livecode.git .
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh 
