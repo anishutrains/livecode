@@ -16,13 +16,14 @@ sudo chown -R www-data:adm /var/log/nginx
 
 # Install required packages
 sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv nginx
+sudo apt-get install -y python3.10 python3.10-venv nginx
 
 # Set up Python virtual environment
-python3 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 
-# Install dependencies
+# Upgrade pip and install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # Create Gunicorn service with environment variables
