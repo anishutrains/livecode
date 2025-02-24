@@ -17,6 +17,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # Create simple systemd service
@@ -34,7 +35,12 @@ Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_REGION=${AWS_REGION}"
 
-ExecStart=/home/ubuntu/classroom-notes/venv/bin/python -m flask run --host=0.0.0.0
+ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
+    --workers 3 \
+    --bind 0.0.0.0:5000 \
+    --access-logfile - \
+    --error-logfile - \
+    backend.app:app
 
 Restart=always
 RestartSec=5
@@ -55,6 +61,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_redirect off;
     }
 }
 EOF
@@ -67,13 +74,13 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo systemctl daemon-reload
 sudo systemctl enable classroom-notes
 sudo systemctl restart classroom-notes
-sudo nginx -t && sudo systemctl restart nginx
 
 # Wait for application to start
 echo "Waiting for application to start..."
 for i in {1..30}; do
     if curl -s http://localhost:5000 > /dev/null; then
         echo "Application is running!"
+        sudo systemctl restart nginx
         break
     fi
     echo "Waiting... ($i/30)"
@@ -83,9 +90,11 @@ done
 # Check if application is running
 if curl -s http://localhost:5000 > /dev/null; then
     echo "Deployment completed successfully!"
+    echo "Service status:"
+    sudo systemctl status classroom-notes --no-pager
 else
     echo "Deployment failed - application is not running"
-    echo "Checking service status:"
-    sudo systemctl status classroom-notes
+    echo "Checking logs:"
+    sudo journalctl -u classroom-notes --no-pager -n 50
     exit 1
 fi 
