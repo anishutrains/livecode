@@ -1,12 +1,16 @@
 let classroomId = window.location.pathname.split('/').pop();
 let pollInterval = null;
 let quill = null;
+let lastContent = null; // Track last content to avoid unnecessary updates
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
     initializeQuill();
     loadNotes();
     setupEventListeners();
+    
+    // Set polling interval to 2 seconds
+    pollInterval = setInterval(loadNotes, 2000);
 });
 
 function initializeTheme() {
@@ -47,47 +51,46 @@ async function loadNotes() {
 
         const data = await response.json();
         
-        // Update title
-        document.getElementById('class-title').textContent = 
-            `Class ${classId.split('-')[1]}`;
-        
-        // Update content
-        if (data.content) {
-            try {
-                // Try to parse as new format
-                const content = JSON.parse(data.content);
-                if (content.delta) {
-                    quill.setContents(content.delta);
-                } else if (content.text) {
-                    quill.setText(content.text);
+        // Check if content has changed before updating
+        if (JSON.stringify(data.content) !== lastContent) {
+            lastContent = JSON.stringify(data.content);
+            
+            // Update title
+            document.getElementById('class-title').textContent = 
+                data.class_name || `Class ${classId.split('-')[1]}`;
+            
+            // Update content
+            if (data.content) {
+                try {
+                    const content = JSON.parse(data.content);
+                    if (content.delta) {
+                        quill.setContents(content.delta);
+                    } else if (content.text) {
+                        quill.setText(content.text);
+                    }
+                } catch (e) {
+                    quill.setText(data.content);
                 }
-            } catch (e) {
-                // Fallback for old format or plain text
-                quill.setText(data.content);
+            } else {
+                quill.setText('No notes available');
             }
-        } else {
-            quill.setText('No notes available');
+            
+            // Update last modified time
+            if (data.last_updated) {
+                const lastUpdated = new Date(data.last_updated).toLocaleString();
+                document.getElementById('last-updated').textContent = 
+                    `Last updated: ${lastUpdated}`;
+            }
         }
-        
-        // Update last modified time
-        if (data.last_updated) {
-            const lastUpdated = new Date(data.last_updated).toLocaleString();
-            document.getElementById('last-updated').textContent = 
-                `Last updated: ${lastUpdated}`;
-        }
-
     } catch (error) {
         console.error('Error loading notes:', error);
-        document.getElementById('notes-content').innerHTML = `
+        document.getElementById('viewer').innerHTML = `
             <div class="alert alert-danger">
                 Failed to load notes. Please try refreshing the page.
             </div>
         `;
     }
 }
-
-// Auto-refresh notes every 30 seconds
-setInterval(loadNotes, 30000);
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {

@@ -7,6 +7,8 @@ import os
 from botocore.exceptions import ClientError
 import logging
 from logging.handlers import RotatingFileHandler
+from functools import lru_cache
+import time
 
 app = Flask(__name__, 
     template_folder='../frontend/templates',
@@ -14,6 +16,9 @@ app = Flask(__name__,
 )
 app.secret_key = os.urandom(24)  # For session management
 CORS(app, supports_credentials=True)
+print(AWS_ACCESS_KEY)
+print(AWS_SECRET_KEY)
+print(REGION)
 
 # Initialize AWS DynamoDB
 dynamodb = boto3.resource('dynamodb',
@@ -168,32 +173,76 @@ def login_api():
             'message': str(e)
         }), 500
 
+# Add cache with 2 second timeout
+@lru_cache(maxsize=128)
+def get_cached_notes(classroom_id, timestamp):
+    """Cache notes with 2-second granularity"""
+    table = dynamodb.Table('classroom_notes')
+    response = table.get_item(
+        Key={
+            'classroom_id': classroom_id
+        }
+    )
+    
+    if 'Item' in response:
+        return response['Item']
+    return None
+
 @app.route('/api/notes/<classroom_id>', methods=['GET'])
 def get_notes(classroom_id):
     try:
-        logger.debug(f"Fetching notes for classroom: {classroom_id}")
-        table = dynamodb.Table('classroom_notes')
-        response = table.get_item(
-            Key={'classroom_id': classroom_id}
-        )
-        return jsonify(response.get('Item', {}))
+        # Use 2-second granularity for cache
+        timestamp = int(time.time() / 2)
+        
+        # Get cached or fresh data
+        data = get_cached_notes(classroom_id, timestamp)
+        
+        if data:
+            return jsonify({
+                'content': data.get('content', ''),
+                'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
+                'last_updated': data.get('last_updated')
+            })
+        return jsonify({'content': '', 'class_name': f'Class {classroom_id.split("-")[1]}'})
     except Exception as e:
-        logger.error(f"Error fetching notes: {str(e)}")
+        print('Error fetching notes:', str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/notes/<classroom_id>', methods=['POST'])
-def update_notes(classroom_id):
-    table = dynamodb.Table('classroom_notes')
-    content = request.json.get('content')
-    
-    table.put_item(
-        Item={
-            'classroom_id': classroom_id,
-            'content': content,
-            'last_updated': datetime.now().isoformat()
-        }
-    )
-    return jsonify({'status': 'success'})
+def save_notes(classroom_id):
+    try:
+        data = request.get_json()
+        content = data.get('content', '')
+        class_name = data.get('class_name')
+        
+        # Get existing item first
+        table = dynamodb.Table('classroom_notes')
+        existing_item = table.get_item(
+            Key={
+                'classroom_id': classroom_id
+            }
+        ).get('Item', {})
+        
+        # Keep existing class_name if not provided in request
+        if not class_name:
+            class_name = existing_item.get('class_name', f'Class {classroom_id.split("-")[1]}')
+        
+        # Clear the cache for this classroom
+        get_cached_notes.cache_clear()
+        
+        # Update the item
+        response = table.put_item(
+            Item={
+                'classroom_id': classroom_id,
+                'content': content,
+                'class_name': class_name,
+                'last_updated': datetime.now().isoformat()
+            }
+        )
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print('Error saving notes:', str(e))
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/classes', methods=['GET'])
 def get_classes():
@@ -224,6 +273,29 @@ def debug():
         'group': os.getgid(),
     }
     return jsonify(debug_info)
+
+@app.route('/api/debug/dynamodb', methods=['GET'])
+def debug_dynamodb():
+    try:
+        table = dynamodb.Table('classroom_notes')
+        response = table.scan()
+        items = response.get('Items', [])
+        
+        debug_info = {
+            'table_name': 'classroom_notes',
+            'item_count': len(items),
+            'items': items,
+            'aws_region': REGION,
+            'environment': os.getenv('FLASK_ENV', 'development')
+        }
+        
+        return jsonify(debug_info)
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'aws_region': REGION,
+            'environment': os.getenv('FLASK_ENV', 'development')
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 

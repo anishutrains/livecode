@@ -57,7 +57,8 @@ function initializeQuill() {
 }
 
 function initializeEventListeners() {
-    document.getElementById('create-class-btn').addEventListener('click', createNewClass);
+    document.getElementById('create-class-btn').addEventListener('click', showCreateClassModal);
+    document.getElementById('confirmCreateClass').addEventListener('click', createNewClass);
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
     document.getElementById('share-btn').addEventListener('click', showShareModal);
     document.getElementById('modal-copy-btn').addEventListener('click', copyModalShareUrl);
@@ -109,7 +110,7 @@ function addClassToList(classItem) {
     
     div.innerHTML = `
         <div class="d-flex flex-column">
-            <div class="fw-bold">Class ${classItem.classroom_id.split('-')[1]}</div>
+            <div class="fw-bold">${classItem.class_name}</div>
             <small class="text-muted">Last updated: ${lastUpdated}</small>
         </div>
     `;
@@ -118,11 +119,24 @@ function addClassToList(classItem) {
     classListElement.appendChild(div);
 }
 
+// Show create class modal
+function showCreateClassModal() {
+    const modal = new bootstrap.Modal(document.getElementById('createClassModal'));
+    modal.show();
+}
+
 // Create new class
 async function createNewClass() {
+    const className = document.getElementById('className').value.trim();
+    if (!className) {
+        showToast('Please enter a class name', 'error');
+        return;
+    }
+
     const classId = 'class-' + Date.now();
     const newClass = {
         classroom_id: classId,
+        class_name: className,
         content: '',
         last_updated: new Date().toISOString()
     };
@@ -133,7 +147,10 @@ async function createNewClass() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ content: '' })
+            body: JSON.stringify({ 
+                content: '',
+                class_name: className 
+            })
         });
         
         if (response.ok) {
@@ -141,6 +158,13 @@ async function createNewClass() {
             addClassToList(newClass);
             selectClass(classId);
             showToast('New class created successfully', 'success');
+            
+            // Close the modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createClassModal'));
+            modal.hide();
+            
+            // Clear the input
+            document.getElementById('className').value = '';
         }
     } catch (error) {
         console.error('Failed to create new class:', error);
@@ -151,9 +175,10 @@ async function createNewClass() {
 // Select class
 async function selectClass(classId) {
     currentClassId = classId;
+    const classData = classesMap.get(classId);
     
     // Update UI
-    document.getElementById('current-class-title').textContent = `Class ${classId.split('-')[1]}`;
+    document.getElementById('current-class-title').textContent = classData.class_name;
     document.getElementById('share-btn').disabled = false;
     quill.enable();
     
@@ -206,12 +231,18 @@ async function updateNotes() {
             delta: delta
         };
 
+        // Get the current class data
+        const classData = classesMap.get(currentClassId);
+
         const response = await fetch(`/api/notes/${currentClassId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ content: JSON.stringify(content) })
+            body: JSON.stringify({ 
+                content: JSON.stringify(content),
+                class_name: classData.class_name // Include the class name in every update
+            })
         });
         
         if (response.ok) {
@@ -221,9 +252,8 @@ async function updateNotes() {
             }, 2000);
             
             // Update last modified time in the list
-            const classItem = classesMap.get(currentClassId);
-            if (classItem) {
-                classItem.last_updated = new Date().toISOString();
+            if (classData) {
+                classData.last_updated = new Date().toISOString();
                 await loadClassList();
             }
         }
