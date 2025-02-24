@@ -9,9 +9,10 @@ echo "Starting deployment at $(date)"
 echo "Current working directory: $(pwd)"
 
 # Create required directories with proper permissions
-sudo mkdir -p /home/ubuntu/classroom-notes/logs
-sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes
-sudo chmod -R 755 /home/ubuntu/classroom-notes/logs
+sudo mkdir -p /home/ubuntu/classroom-notes/logs/gunicorn
+sudo mkdir -p /var/log/nginx
+sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs/gunicorn
+sudo chown -R www-data:adm /var/log/nginx
 
 # Install required packages
 sudo apt-get update
@@ -41,22 +42,22 @@ Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 Environment="PYTHONPATH=/home/ubuntu/classroom-notes"
 
-# Create and set permissions for log files
-ExecStartPre=/bin/bash -c 'mkdir -p /home/ubuntu/classroom-notes/logs'
-ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn.log'
-ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/access.log'
-ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/error.log'
-ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/env.log'
-ExecStartPre=/bin/bash -c 'chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs'
-ExecStartPre=/bin/bash -c 'chmod -R 755 /home/ubuntu/classroom-notes/logs'
-ExecStartPre=/bin/bash -c 'printenv > /home/ubuntu/classroom-notes/logs/env.log'
+# Create and set permissions for Gunicorn log files
+ExecStartPre=/bin/bash -c 'mkdir -p /home/ubuntu/classroom-notes/logs/gunicorn'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn/gunicorn.log'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn/access.log'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn/error.log'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn/env.log'
+ExecStartPre=/bin/bash -c 'chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs/gunicorn'
+ExecStartPre=/bin/bash -c 'chmod -R 755 /home/ubuntu/classroom-notes/logs/gunicorn'
+ExecStartPre=/bin/bash -c 'printenv > /home/ubuntu/classroom-notes/logs/gunicorn/env.log'
 
 ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
     --workers 3 \
     --bind 127.0.0.1:5000 \
-    --log-file /home/ubuntu/classroom-notes/logs/gunicorn.log \
-    --access-logfile /home/ubuntu/classroom-notes/logs/access.log \
-    --error-logfile /home/ubuntu/classroom-notes/logs/error.log \
+    --log-file /home/ubuntu/classroom-notes/logs/gunicorn/gunicorn.log \
+    --access-logfile /home/ubuntu/classroom-notes/logs/gunicorn/access.log \
+    --error-logfile /home/ubuntu/classroom-notes/logs/gunicorn/error.log \
     --capture-output \
     --enable-stdio-inheritance \
     backend.app:app
@@ -74,8 +75,8 @@ server {
     listen 80;
     server_name _;
 
-    access_log /home/ubuntu/classroom-notes/logs/nginx-access.log;
-    error_log /home/ubuntu/classroom-notes/logs/nginx-error.log;
+    access_log /var/log/nginx/classroom-notes-access.log;
+    error_log /var/log/nginx/classroom-notes-error.log;
 
     location / {
         proxy_pass http://127.0.0.1:5000;
@@ -106,9 +107,9 @@ sleep 2
 echo "Checking service logs..."
 sudo journalctl -u classroom-notes -n 50 --no-pager || true
 echo "Checking gunicorn log..."
-cat /home/ubuntu/classroom-notes/logs/gunicorn.log || true
+cat /home/ubuntu/classroom-notes/logs/gunicorn/gunicorn.log || true
 echo "Checking error log..."
-cat /home/ubuntu/classroom-notes/logs/error.log || true
+cat /home/ubuntu/classroom-notes/logs/gunicorn/error.log || true
 
 # Wait for Gunicorn with better debugging
 echo "Waiting for Gunicorn to start..."
@@ -135,8 +136,8 @@ if curl -s http://127.0.0.1:5000/health >/dev/null; then
 else
     echo "Error: Gunicorn is not running. Checking logs:"
     sudo systemctl status classroom-notes --no-pager
-    cat /home/ubuntu/classroom-notes/logs/gunicorn.log
-    cat /home/ubuntu/classroom-notes/logs/error.log
+    cat /home/ubuntu/classroom-notes/logs/gunicorn/gunicorn.log
+    cat /home/ubuntu/classroom-notes/logs/gunicorn/error.log
     exit 1
 fi
 
