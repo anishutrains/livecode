@@ -16,10 +16,10 @@ sudo chown -R www-data:adm /var/log/nginx
 
 # Install required packages
 sudo apt-get update
-sudo apt-get install -y python3.10 python3.10-venv nginx
+sudo apt-get install -y python3.13.2 python3.13.2-venv nginx
 
 # Set up Python virtual environment
-python3.10 -m venv venv
+python3.13.2 -m venv venv
 source venv/bin/activate
 
 # Upgrade pip and install dependencies
