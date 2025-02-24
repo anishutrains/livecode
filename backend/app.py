@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request, render_template, redirect, url_for, session
 from flask_cors import CORS
 import boto3
-from backend.config.aws_config import AWS_ACCESS_KEY, AWS_SECRET_KEY, REGION
+from config.aws_config import AWS_ACCESS_KEY, AWS_SECRET_KEY, REGION
 from datetime import datetime
 import os
 from botocore.exceptions import ClientError

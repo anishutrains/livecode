@@ -1,4 +1,4 @@
-name: Deploy to aws EC2 instance 
+name: Deploy to EC2
 
 on:
   push:
@@ -7,11 +7,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-
     steps:
     - uses: actions/checkout@v2
 
@@ -27,30 +22,9 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION
         script: |
-          # Create temp directory
-          mkdir -p /home/ubuntu/temp_deploy
-          cd /home/ubuntu/temp_deploy
-          
-          # Clone repository
-          git clone https://github.com/anishutrains/livecode.git .
-          
-          # Create aws_config.py
-          cp backend/config/aws_config.template.py backend/config/aws_config.py
-          
-          # Set permissions
-          sudo chown -R ubuntu:ubuntu .
-          find . -type d -exec chmod 755 {} \;
-          find . -type f -exec chmod 644 {} \;
-          chmod +x scripts/deploy.sh
-          
-          # Stop services if they exist
-          sudo systemctl stop classroom-notes || true
-          sudo systemctl stop nginx || true
-          
-          # Move to final location
-          sudo rm -rf /home/ubuntu/classroom-notes
-          sudo mv /home/ubuntu/temp_deploy /home/ubuntu/classroom-notes
-          
-          # Run deployment script
+          rm -rf /home/ubuntu/classroom-notes
+          mkdir -p /home/ubuntu/classroom-notes
           cd /home/ubuntu/classroom-notes
+          git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git .
+          chmod +x scripts/deploy.sh
           ./scripts/deploy.sh 
