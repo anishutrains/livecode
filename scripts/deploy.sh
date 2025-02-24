@@ -8,15 +8,14 @@ exec 2> >(tee -a /home/ubuntu/deploy-error.log >&2)
 echo "Starting deployment at $(date)"
 echo "Current working directory: $(pwd)"
 
-# Ensure proper ownership and permissions
+# Create required directories with proper permissions
+sudo mkdir -p /home/ubuntu/classroom-notes/logs
 sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes
-sudo find /home/ubuntu/classroom-notes -type d -exec chmod 755 {} \;
-sudo find /home/ubuntu/classroom-notes -type f -exec chmod 644 {} \;
-sudo chmod +x /home/ubuntu/classroom-notes/scripts/deploy.sh
+sudo chmod -R 755 /home/ubuntu/classroom-notes/logs
 
 # Install required packages
 sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv nginx git
+sudo apt-get install -y python3-pip python3-venv nginx
 
 # Set up Python virtual environment
 python3 -m venv venv
@@ -24,16 +23,6 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Create logs directory with proper permissions
-sudo mkdir -p /home/ubuntu/classroom-notes/logs
-sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs
-sudo chmod 755 /home/ubuntu/classroom-notes/logs
-
-# Create aws_config.py from template
-echo "Creating aws_config.py from template..."
-cp backend/config/aws_config.template.py backend/config/aws_config.py
-chmod 644 backend/config/aws_config.py
 
 # Create Gunicorn service with environment variables
 sudo tee /etc/systemd/system/classroom-notes.service << EOF
@@ -52,10 +41,10 @@ Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 Environment="PYTHONPATH=/home/ubuntu/classroom-notes"
 
-# Debug startup
-ExecStartPre=/bin/bash -c 'echo "Starting service at $(date)" >> /home/ubuntu/classroom-notes/logs/startup.log'
-ExecStartPre=/bin/bash -c 'printenv >> /home/ubuntu/classroom-notes/logs/env.log'
-ExecStartPre=/bin/bash -c 'pip freeze >> /home/ubuntu/classroom-notes/logs/requirements.log'
+# Create log files if they don't exist
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn.log /home/ubuntu/classroom-notes/logs/access.log /home/ubuntu/classroom-notes/logs/error.log'
+ExecStartPre=/bin/bash -c 'chown ubuntu:ubuntu /home/ubuntu/classroom-notes/logs/*.log'
+ExecStartPre=/bin/bash -c 'printenv > /home/ubuntu/classroom-notes/logs/env.log'
 
 ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
     --workers 3 \
@@ -105,23 +94,30 @@ sudo systemctl daemon-reload
 sudo systemctl enable classroom-notes
 sudo systemctl restart classroom-notes
 
-# Add debug checks before waiting for Gunicorn
+# Wait for log files to be created
+sleep 2
+
+# Check logs for errors
 echo "Checking service logs..."
-sudo journalctl -u classroom-notes -n 50 --no-pager
+sudo journalctl -u classroom-notes -n 50 --no-pager || true
 echo "Checking gunicorn log..."
-tail -n 50 /home/ubuntu/classroom-notes/logs/gunicorn.log
+cat /home/ubuntu/classroom-notes/logs/gunicorn.log || true
 echo "Checking error log..."
-tail -n 50 /home/ubuntu/classroom-notes/logs/error.log
+cat /home/ubuntu/classroom-notes/logs/error.log || true
 
 # Wait for Gunicorn with better debugging
 echo "Waiting for Gunicorn to start..."
 for i in {1..30}; do
     echo "Attempt $i: Checking Gunicorn status..."
-    sudo systemctl status classroom-notes --no-pager
-    
-    if curl -s http://127.0.0.1:5000/health >/dev/null; then
-        echo "Gunicorn is running!"
-        break
+    if sudo systemctl is-active classroom-notes >/dev/null 2>&1; then
+        echo "Service is active"
+        if curl -s http://127.0.0.1:5000/health >/dev/null; then
+            echo "Gunicorn is running!"
+            break
+        fi
+    else
+        echo "Service is not active, checking status:"
+        sudo systemctl status classroom-notes --no-pager
     fi
     echo "Waiting... ($i/30)"
     sleep 2
@@ -132,14 +128,12 @@ if curl -s http://127.0.0.1:5000/health >/dev/null; then
     sudo systemctl restart nginx
     echo "Nginx started successfully"
 else
-    echo "Error: Gunicorn is not running"
+    echo "Error: Gunicorn is not running. Checking logs:"
+    sudo systemctl status classroom-notes --no-pager
+    cat /home/ubuntu/classroom-notes/logs/gunicorn.log
+    cat /home/ubuntu/classroom-notes/logs/error.log
     exit 1
 fi
 
 # Log deployment completion
-echo "Deployment completed at $(date)"
-
-# Check service status
-echo "Checking service status:"
-sudo systemctl status classroom-notes
-sudo systemctl status nginx 
+echo "Deployment completed at $(date)" 
