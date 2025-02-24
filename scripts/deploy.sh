@@ -41,9 +41,14 @@ Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 Environment="PYTHONPATH=/home/ubuntu/classroom-notes"
 
-# Create log files if they don't exist
-ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn.log /home/ubuntu/classroom-notes/logs/access.log /home/ubuntu/classroom-notes/logs/error.log'
-ExecStartPre=/bin/bash -c 'chown ubuntu:ubuntu /home/ubuntu/classroom-notes/logs/*.log'
+# Create and set permissions for log files
+ExecStartPre=/bin/bash -c 'mkdir -p /home/ubuntu/classroom-notes/logs'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/gunicorn.log'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/access.log'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/error.log'
+ExecStartPre=/bin/bash -c 'touch /home/ubuntu/classroom-notes/logs/env.log'
+ExecStartPre=/bin/bash -c 'chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs'
+ExecStartPre=/bin/bash -c 'chmod -R 755 /home/ubuntu/classroom-notes/logs'
 ExecStartPre=/bin/bash -c 'printenv > /home/ubuntu/classroom-notes/logs/env.log'
 
 ExecStart=/home/ubuntu/classroom-notes/venv/bin/gunicorn \
