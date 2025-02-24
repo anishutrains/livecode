@@ -15,21 +15,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Fix file permissions
-      run: |
-        chmod -R 755 .
-        find . -type f -exec chmod 644 {} \;
-
-    - name: Copy files to EC2
-      uses: appleboy/scp-action@master
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ubuntu
-        key: ${{ secrets.EC2_SSH_KEY }}
-        source: "."
-        target: "/home/ubuntu/classroom-notes-temp"
-        strip_components: 0
-
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
       env:
@@ -42,14 +27,30 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_REGION
         script: |
-          # Fix permissions and move files
-          sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes-temp
-          rm -rf /home/ubuntu/classroom-notes
-          mv /home/ubuntu/classroom-notes-temp /home/ubuntu/classroom-notes
+          # Create temp directory
+          mkdir -p /home/ubuntu/temp_deploy
+          cd /home/ubuntu/temp_deploy
           
-          # Make scripts executable
-          chmod +x /home/ubuntu/classroom-notes/scripts/deploy.sh
+          # Clone repository
+          git clone https://github.com/anishutrains/livecode.git .
           
-          # Run deployment
+          # Create aws_config.py
+          cp backend/config/aws_config.template.py backend/config/aws_config.py
+          
+          # Set permissions
+          sudo chown -R ubuntu:ubuntu .
+          find . -type d -exec chmod 755 {} \;
+          find . -type f -exec chmod 644 {} \;
+          chmod +x scripts/deploy.sh
+          
+          # Stop services if they exist
+          sudo systemctl stop classroom-notes || true
+          sudo systemctl stop nginx || true
+          
+          # Move to final location
+          sudo rm -rf /home/ubuntu/classroom-notes
+          sudo mv /home/ubuntu/temp_deploy /home/ubuntu/classroom-notes
+          
+          # Run deployment script
           cd /home/ubuntu/classroom-notes
           ./scripts/deploy.sh 

@@ -8,24 +8,15 @@ exec 2> >(tee -a /home/ubuntu/deploy-error.log >&2)
 echo "Starting deployment at $(date)"
 echo "Current working directory: $(pwd)"
 
-# Fix permissions
-sudo chown -R ubuntu:ubuntu .
-find . -type d -exec chmod 755 {} \;
-find . -type f -exec chmod 644 {} \;
-chmod +x scripts/deploy.sh
-
-# Create aws_config.py from template
-echo "Creating aws_config.py from template..."
-cp backend/config/aws_config.template.py backend/config/aws_config.py
-chmod 644 backend/config/aws_config.py
+# Ensure proper ownership and permissions
+sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes
+sudo find /home/ubuntu/classroom-notes -type d -exec chmod 755 {} \;
+sudo find /home/ubuntu/classroom-notes -type f -exec chmod 644 {} \;
+sudo chmod +x /home/ubuntu/classroom-notes/scripts/deploy.sh
 
 # Install required packages
 sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv nginx
-
-# Create application directory
-mkdir -p /home/ubuntu/classroom-notes
-cd /home/ubuntu/classroom-notes
+sudo apt-get install -y python3-pip python3-venv nginx git
 
 # Set up Python virtual environment
 python3 -m venv venv
@@ -34,9 +25,15 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Create logs directory
+# Create logs directory with proper permissions
 sudo mkdir -p /home/ubuntu/classroom-notes/logs
 sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs
+sudo chmod 755 /home/ubuntu/classroom-notes/logs
+
+# Create aws_config.py from template
+echo "Creating aws_config.py from template..."
+cp backend/config/aws_config.template.py backend/config/aws_config.py
+chmod 644 backend/config/aws_config.py
 
 # Create Gunicorn service with environment variables
 sudo tee /etc/systemd/system/classroom-notes.service << EOF
