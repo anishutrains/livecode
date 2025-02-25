@@ -2,9 +2,6 @@ let currentClassId = null;
 let saveTimeout = null;
 let classesMap = new Map();
 let quill = null;
-let editor = document.getElementById('editor');
-let languageSelect = document.getElementById('languageSelect');
-let currentLanguage = 'plaintext';
 
 // Initialize editor page
 document.addEventListener('DOMContentLoaded', () => {
@@ -73,35 +70,16 @@ function initializeEventListeners() {
         localStorage.setItem('theme', theme);
     });
 
-    // Handle language selection
-    languageSelect.addEventListener('change', (e) => {
-        currentLanguage = e.target.value;
-        highlightCode();
-    });
-
-    // Handle editor input
-    let timeout;
-    editor.addEventListener('input', () => {
-        // Store cursor position
-        let selection = window.getSelection();
-        let range = selection.getRangeAt(0);
-        let start = range.startOffset;
+    // Add language selection handler to Quill
+    document.getElementById('languageSelect').addEventListener('change', (e) => {
+        const format = e.target.value;
+        const range = quill.getSelection(true);
         
-        // Debounce highlighting to improve performance
-        clearTimeout(timeout);
-        timeout = setTimeout(() => {
-            highlightCode();
-            
-            // Restore cursor position
-            let newRange = document.createRange();
-            newRange.setStart(editor.firstChild || editor, Math.min(start, editor.textContent.length));
-            newRange.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(newRange);
-        }, 200);
-
-        // Send updates to server
-        sendUpdate(editor.innerText);
+        if (format && range) {
+            if (range.length > 0) {
+                quill.formatText(range.index, range.length, 'code-block', format);
+            }
+        }
     });
 }
 
@@ -208,44 +186,42 @@ async function createNewClass() {
 
 // Select class
 async function selectClass(classId) {
-    currentClassId = classId;
-    const classData = classesMap.get(classId);
-    
-    // Update UI
-    document.getElementById('current-class-title').textContent = classData.class_name;
-    document.getElementById('share-btn').disabled = false;
-    quill.enable();
-    
-    // Update active class in sidebar
-    document.querySelectorAll('.class-list-item').forEach(item => {
-        item.classList.remove('active');
-        if (item.getAttribute('data-class-id') === classId) {
-            item.classList.add('active');
-        }
-    });
-    
     try {
+        currentClassId = classId;
+        const classData = classesMap.get(classId);
+
+        // Update UI
+        document.getElementById('current-class-title').textContent = classData.class_name;
+        document.getElementById('share-btn').disabled = false;
+
+        // Update active class in sidebar
+        document.querySelectorAll('.class-list-item').forEach(item => {
+            item.classList.toggle('active', item.getAttribute('data-class-id') === classId);
+        });
+
+        // Enable editor
+        quill.enable();
+
+        // Load notes
         const response = await fetch(`/api/notes/${classId}`);
         const data = await response.json();
-        
+
         if (data.content) {
             try {
-                // Try to parse as new format
                 const content = JSON.parse(data.content);
                 if (content.delta) {
                     quill.setContents(content.delta);
-                } else if (content.text) {
-                    quill.setText(content.text);
+                } else {
+                    quill.setText(content.text || '');
                 }
             } catch (e) {
-                // Fallback for old format or plain text
                 quill.setText(data.content);
             }
         } else {
             quill.setText('');
         }
     } catch (error) {
-        console.error('Failed to fetch notes:', error);
+        console.error('Failed to load notes:', error);
         showToast('Failed to load notes', 'error');
     }
 }
@@ -255,17 +231,11 @@ async function updateNotes() {
     if (!currentClassId) return;
     
     try {
-        // Get the content as plain text for backwards compatibility
-        const plainText = quill.getText();
-        // Get the delta for rich text
-        const delta = quill.getContents();
-        
         const content = {
-            text: plainText,
-            delta: delta
+            text: quill.getText(),
+            delta: quill.getContents()
         };
 
-        // Get the current class data
         const classData = classesMap.get(currentClassId);
 
         const response = await fetch(`/api/notes/${currentClassId}`, {
@@ -273,19 +243,18 @@ async function updateNotes() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 content: JSON.stringify(content),
-                class_name: classData.class_name // Include the class name in every update
+                class_name: classData.class_name
             })
         });
-        
+
         if (response.ok) {
             document.getElementById('save-status').textContent = 'All changes saved';
             setTimeout(() => {
                 document.getElementById('save-status').textContent = '';
             }, 2000);
             
-            // Update last modified time in the list
             if (classData) {
                 classData.last_updated = new Date().toISOString();
                 await loadClassList();
@@ -372,26 +341,4 @@ async function login() {
     } catch (error) {
         handleError(error);
     }
-}
-
-// Function to highlight code
-function highlightCode() {
-    let code = editor.innerText;
-    let highlighted = Prism.highlight(code, Prism.languages[currentLanguage], currentLanguage);
-    editor.innerHTML = highlighted;
-}
-
-// Function to send updates to server
-function sendUpdate(content) {
-    fetch('/api/update_notes', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            content: content,
-            language: currentLanguage,
-            classroom_id: getClassroomId()
-        })
-    });
 } 

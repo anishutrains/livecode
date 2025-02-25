@@ -22,6 +22,11 @@ function initializeTheme() {
 function initializeQuill() {
     quill = new Quill('#viewer', {
         theme: 'bubble',
+        modules: {
+            syntax: {
+                highlight: text => hljs.highlightAuto(text).value
+            }
+        },
         readOnly: true
     });
 }
@@ -51,22 +56,19 @@ async function loadNotes() {
 
         const data = await response.json();
         
-        // Check if content has changed before updating
         if (JSON.stringify(data.content) !== lastContent) {
             lastContent = JSON.stringify(data.content);
             
-            // Update title
             document.getElementById('class-title').textContent = 
                 data.class_name || `Class ${classId.split('-')[1]}`;
             
-            // Update content
             if (data.content) {
                 try {
                     const content = JSON.parse(data.content);
                     if (content.delta) {
                         quill.setContents(content.delta);
-                    } else if (content.text) {
-                        quill.setText(content.text);
+                    } else {
+                        quill.setText(content.text || '');
                     }
                 } catch (e) {
                     quill.setText(data.content);
@@ -75,7 +77,6 @@ async function loadNotes() {
                 quill.setText('No notes available');
             }
             
-            // Update last modified time
             if (data.last_updated) {
                 const lastUpdated = new Date(data.last_updated).toLocaleString();
                 document.getElementById('last-updated').textContent = 
@@ -83,7 +84,7 @@ async function loadNotes() {
             }
         }
     } catch (error) {
-        console.error('Error loading notes:', error);
+        console.error('Failed to load notes:', error);
         document.getElementById('viewer').innerHTML = `
             <div class="alert alert-danger">
                 Failed to load notes. Please try refreshing the page.
