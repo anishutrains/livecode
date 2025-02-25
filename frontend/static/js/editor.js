@@ -2,6 +2,9 @@ let currentClassId = null;
 let saveTimeout = null;
 let classesMap = new Map();
 let quill = null;
+let editor = document.getElementById('editor');
+let languageSelect = document.getElementById('languageSelect');
+let currentLanguage = 'plaintext';
 
 // Initialize editor page
 document.addEventListener('DOMContentLoaded', () => {
@@ -68,6 +71,37 @@ function initializeEventListeners() {
         const theme = e.target.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
+    });
+
+    // Handle language selection
+    languageSelect.addEventListener('change', (e) => {
+        currentLanguage = e.target.value;
+        highlightCode();
+    });
+
+    // Handle editor input
+    let timeout;
+    editor.addEventListener('input', () => {
+        // Store cursor position
+        let selection = window.getSelection();
+        let range = selection.getRangeAt(0);
+        let start = range.startOffset;
+        
+        // Debounce highlighting to improve performance
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            highlightCode();
+            
+            // Restore cursor position
+            let newRange = document.createRange();
+            newRange.setStart(editor.firstChild || editor, Math.min(start, editor.textContent.length));
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+        }, 200);
+
+        // Send updates to server
+        sendUpdate(editor.innerText);
     });
 }
 
@@ -338,4 +372,26 @@ async function login() {
     } catch (error) {
         handleError(error);
     }
+}
+
+// Function to highlight code
+function highlightCode() {
+    let code = editor.innerText;
+    let highlighted = Prism.highlight(code, Prism.languages[currentLanguage], currentLanguage);
+    editor.innerHTML = highlighted;
+}
+
+// Function to send updates to server
+function sendUpdate(content) {
+    fetch('/api/update_notes', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            content: content,
+            language: currentLanguage,
+            classroom_id: getClassroomId()
+        })
+    });
 } 

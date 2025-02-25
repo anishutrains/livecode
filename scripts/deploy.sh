@@ -85,4 +85,14 @@ else
     echo "Application failed to start. Checking logs:"
     sudo journalctl -u classroom-notes --no-pager -n 50
     exit 1
-fi 
+fi
+
+# Create log directories with proper permissions
+sudo mkdir -p /var/log/classroom-notes
+sudo chown -R ubuntu:ubuntu /var/log/classroom-notes
+sudo chmod -R 755 /var/log/classroom-notes
+
+# Create local logs directory for development
+mkdir -p /home/ubuntu/classroom-notes/logs
+sudo chown -R ubuntu:ubuntu /home/ubuntu/classroom-notes/logs
+sudo chmod -R 755 /home/ubuntu/classroom-notes/logs 

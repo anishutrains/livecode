@@ -79,38 +79,36 @@ def setup_logging():
     is_production = os.environ.get('FLASK_ENV') == 'production'
     
     # Set up formatters
-    default_formatter = logging.Formatter(
-        '%(asctime)s [%(levelname)s] - %(name)s - %(message)s'
-    )
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] - %(name)s - %(message)s')
 
+    # Create handlers list
+    handlers = []
+
+    # Add console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    handlers.append(console_handler)
+
+    # Add file handler based on environment
     if is_production:
-        log_dir = '/home/ubuntu/classroom-notes/logs'
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = f'{log_dir}/app.log'
-        
-        # File handler for all logs
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=10000000,  # 10MB
-            backupCount=5,
-            mode='a'
-        )
-        file_handler.setFormatter(default_formatter)
-        handlers = [file_handler, logging.StreamHandler()]
+        # In production, use /var/log/classroom-notes/
+        log_dir = '/var/log/classroom-notes'
     else:
-        # In development, just log to console
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(default_formatter)
-        handlers = [console_handler]
+        # In development, use logs/ in project directory
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    
+    # Create log directory if it doesn't exist
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Add file handler
+    file_handler = logging.FileHandler(os.path.join(log_dir, 'app.log'))
+    file_handler.setFormatter(formatter)
+    handlers.append(file_handler)
 
     # Configure root logger
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler('/var/log/classroom-notes/app.log')
-        ]
+        handlers=handlers
     )
 
     # Set specific log levels for different loggers
@@ -304,6 +302,32 @@ def debug_dynamodb():
             'aws_region': REGION,
             'environment': os.getenv('FLASK_ENV', 'development')
         }), 500
+
+@app.route('/api/update_notes', methods=['POST'])
+def update_notes():
+    try:
+        data = request.json
+        content = data.get('content', '')
+        language = data.get('language', 'plaintext')
+        classroom_id = data.get('classroom_id')
+
+        if not classroom_id:
+            return jsonify({'error': 'Missing classroom_id'}), 400
+
+        table = dynamodb.Table('classroom_notes')
+        table.put_item(
+            Item={
+                'classroom_id': classroom_id,
+                'content': content,
+                'language': language,  # Store the language
+                'timestamp': int(time.time())
+            }
+        )
+        
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        logger.error(f"Error updating notes: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.errorhandler(Exception)
 def handle_error(error):
