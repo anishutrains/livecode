@@ -1,12 +1,12 @@
+let editor = null;
 let currentClassId = null;
 let saveTimeout = null;
 let classesMap = new Map();
-let quill = null;
 
 // Initialize editor page
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
-    initializeQuill();
+    initializeEditor();
     initializeEventListeners();
     loadClassList();
 });
@@ -17,43 +17,87 @@ function initializeTheme() {
     document.getElementById('theme-toggle').checked = savedTheme === 'dark';
 }
 
-function initializeQuill() {
-    const toolbarOptions = [
-        ['bold', 'italic', 'underline', 'strike'],
-        ['blockquote', 'code-block'],
-        [{ 'header': 1 }, { 'header': 2 }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        [{ 'script': 'sub'}, { 'script': 'super' }],
-        [{ 'indent': '-1'}, { 'indent': '+1' }],
-        [{ 'direction': 'rtl' }],
-        [{ 'size': ['small', false, 'large', 'huge'] }],
-        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'font': [] }],
-        [{ 'align': [] }],
-        ['clean']
-    ];
+function initializeEditor() {
+    require(['vs/editor/editor.main'], function() {
+        editor = monaco.editor.create(document.getElementById('editor'), {
+            value: '',
+            language: 'plaintext',
+            theme: 'vs-dark',
+            automaticLayout: true,
+            minimap: { enabled: true },
+            fontSize: 14,
+            lineNumbers: 'on',
+            renderIndentGuides: true,
+            tabSize: 4,
+            scrollBeyondLastLine: false,
+            wordWrap: 'on',
+            formatOnType: true,
+            formatOnPaste: true,
+            suggestOnTriggerCharacters: true,
+            snippetSuggestions: 'inline',
+            folding: true,
+            autoIndent: 'full'
+        });
 
-    quill = new Quill('#editor', {
-        theme: 'snow',
-        modules: {
-            toolbar: toolbarOptions
+        // Language selection handler
+        document.getElementById('languageSelect').addEventListener('change', (e) => {
+            const language = e.target.value;
+            monaco.editor.setModelLanguage(editor.getModel(), language);
+            
+            // Set language-specific settings
+            const settings = getLanguageSettings(language);
+            editor.updateOptions(settings);
+        });
+
+        // Auto-save on content change
+        editor.onDidChangeModelContent(() => {
+            if (saveTimeout) clearTimeout(saveTimeout);
+            document.getElementById('save-status').textContent = 'Saving...';
+            
+            saveTimeout = setTimeout(() => {
+                if (currentClassId) {
+                    updateNotes();
+                }
+            }, 1000);
+        });
+
+        // Disable editor initially
+        editor.updateOptions({ readOnly: true });
+    });
+}
+
+function getLanguageSettings(language) {
+    const baseSettings = {
+        tabSize: 4,
+        insertSpaces: true,
+        autoIndent: 'full',
+        formatOnType: true
+    };
+
+    const languageSettings = {
+        python: {
+            ...baseSettings,
+            tabSize: 4,
+            insertSpaces: true
         },
-        placeholder: 'Select a class to start taking notes...'
-    });
+        javascript: {
+            ...baseSettings,
+            tabSize: 2,
+            insertSpaces: true
+        },
+        java: {
+            ...baseSettings,
+            tabSize: 4,
+            insertSpaces: true
+        },
+        cpp: {
+            ...baseSettings,
+            tabSize: 4,
+            insertSpaces: true
+        }
+    };
 
-    quill.disable();
-
-    quill.on('text-change', () => {
-        if (saveTimeout) clearTimeout(saveTimeout);
-        document.getElementById('save-status').textContent = 'Saving...';
-        
-        saveTimeout = setTimeout(() => {
-            if (currentClassId) {
-                updateNotes();
-            }
-        }, 1000);
-    });
+    return languageSettings[language] || baseSettings;
 }
 
 function initializeEventListeners() {
@@ -68,18 +112,6 @@ function initializeEventListeners() {
         const theme = e.target.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
-    });
-
-    // Add language selection handler to Quill
-    document.getElementById('languageSelect').addEventListener('change', (e) => {
-        const format = e.target.value;
-        const range = quill.getSelection(true);
-        
-        if (format && range) {
-            if (range.length > 0) {
-                quill.formatText(range.index, range.length, 'code-block', format);
-            }
-        }
     });
 }
 
@@ -194,13 +226,8 @@ async function selectClass(classId) {
         document.getElementById('current-class-title').textContent = classData.class_name;
         document.getElementById('share-btn').disabled = false;
 
-        // Update active class in sidebar
-        document.querySelectorAll('.class-list-item').forEach(item => {
-            item.classList.toggle('active', item.getAttribute('data-class-id') === classId);
-        });
-
         // Enable editor
-        quill.enable();
+        editor.updateOptions({ readOnly: false });
 
         // Load notes
         const response = await fetch(`/api/notes/${classId}`);
@@ -209,16 +236,18 @@ async function selectClass(classId) {
         if (data.content) {
             try {
                 const content = JSON.parse(data.content);
-                if (content.delta) {
-                    quill.setContents(content.delta);
-                } else {
-                    quill.setText(content.text || '');
+                editor.setValue(content.text || '');
+                
+                // Set language if present
+                if (content.language) {
+                    document.getElementById('languageSelect').value = content.language;
+                    monaco.editor.setModelLanguage(editor.getModel(), content.language);
                 }
             } catch (e) {
-                quill.setText(data.content);
+                editor.setValue(data.content);
             }
         } else {
-            quill.setText('');
+            editor.setValue('');
         }
     } catch (error) {
         console.error('Failed to load notes:', error);
@@ -232,8 +261,8 @@ async function updateNotes() {
     
     try {
         const content = {
-            text: quill.getText(),
-            delta: quill.getContents()
+            text: editor.getValue(),
+            language: document.getElementById('languageSelect').value
         };
 
         const classData = classesMap.get(currentClassId);
