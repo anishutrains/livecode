@@ -26,7 +26,8 @@ function initializeEditor() {
             renderIndentGuides: true,
             tabSize: 4,
             scrollBeyondLastLine: false,
-            wordWrap: 'on'
+            wordWrap: 'on',
+            padding: { top: 20, bottom: 20 }
         });
     });
 }
@@ -89,12 +90,48 @@ function setupEventListeners() {
     document.getElementById('print-btn').addEventListener('click', () => {
         window.print();
     });
+
+    // Add PDF download handler
+    document.getElementById('download-pdf').addEventListener('click', generatePDF);
 }
 
 function initializeTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
     document.getElementById('theme-toggle').checked = savedTheme === 'dark';
+}
+
+async function generatePDF() {
+    try {
+        const content = editor.getValue();
+        const classTitle = document.getElementById('class-title').textContent;
+        
+        // Create a temporary div for PDF generation
+        const tempDiv = document.createElement('div');
+        tempDiv.style.padding = '20px';
+        
+        // Add header
+        tempDiv.innerHTML = `
+            <h1 style="margin-bottom: 20px;">${classTitle}</h1>
+            <div style="white-space: pre-wrap; font-family: monospace;">${content}</div>
+        `;
+        
+        // PDF options
+        const opt = {
+            margin: 1,
+            filename: `${classTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_notes.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+
+        // Generate PDF
+        const element = tempDiv;
+        html2pdf().set(opt).from(element).save();
+    } catch (error) {
+        console.error('Failed to generate PDF:', error);
+        alert('Failed to generate PDF. Please try again.');
+    }
 }
 
 // Cleanup on page unload
