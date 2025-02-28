@@ -8,9 +8,15 @@ echo "Starting deployment..."
 # Variables
 DOMAIN="livecode.awscertif.site"
 APP_DIR="/home/ubuntu/livecode"
-PROJECT_DIR="$(dirname "$(dirname "$0")")"  # Get the project root directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 
+# Debug information
+echo "Current directory: $(pwd)"
+echo "Script directory: $SCRIPT_DIR"
 echo "Project directory: $PROJECT_DIR"
+echo "Listing project directory contents:"
+ls -la "$PROJECT_DIR"
 
 # Update system
 echo "Updating system packages..."
@@ -23,9 +29,35 @@ sudo mkdir -p $APP_DIR
 
 # Copy application files
 echo "Copying application files..."
-sudo cp -r "$PROJECT_DIR/frontend" $APP_DIR/
-sudo cp -r "$PROJECT_DIR/backend" $APP_DIR/
-sudo cp "$PROJECT_DIR/requirements.txt" $APP_DIR/
+echo "Copying from: $PROJECT_DIR"
+echo "Copying to: $APP_DIR"
+
+if [ -d "$PROJECT_DIR/frontend" ]; then
+    echo "Frontend directory exists"
+    sudo cp -r "$PROJECT_DIR/frontend" $APP_DIR/
+else
+    echo "ERROR: Frontend directory not found at $PROJECT_DIR/frontend"
+    ls -la "$PROJECT_DIR"
+    exit 1
+fi
+
+if [ -d "$PROJECT_DIR/backend" ]; then
+    echo "Backend directory exists"
+    sudo cp -r "$PROJECT_DIR/backend" $APP_DIR/
+else
+    echo "ERROR: Backend directory not found at $PROJECT_DIR/backend"
+    ls -la "$PROJECT_DIR"
+    exit 1
+fi
+
+if [ -f "$PROJECT_DIR/requirements.txt" ]; then
+    echo "Requirements.txt exists"
+    sudo cp "$PROJECT_DIR/requirements.txt" $APP_DIR/
+else
+    echo "ERROR: requirements.txt not found at $PROJECT_DIR/requirements.txt"
+    ls -la "$PROJECT_DIR"
+    exit 1
+fi
 
 # Create .env file with secrets
 sudo tee $APP_DIR/.env << EOF
