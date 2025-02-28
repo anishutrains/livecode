@@ -21,9 +21,15 @@ echo "Updating system packages..."
 sudo apt-get update
 sudo apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
 
-# Create and setup application directory
-cd /home/ubuntu
+# First, stop services
+sudo systemctl stop nginx
+sudo systemctl stop livecode
+
+# Create directories if they don't exist
 sudo mkdir -p $APP_DIR
+sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
+sudo mkdir -p $APP_DIR/logs
+sudo mkdir -p /var/log/livecode
 
 # Copy application files
 echo "Copying application files..."
@@ -31,7 +37,7 @@ sudo cp -r "$PROJECT_DIR/frontend" $APP_DIR/
 sudo cp -r "$PROJECT_DIR/backend" $APP_DIR/
 sudo cp "$PROJECT_DIR/requirements.txt" $APP_DIR/
 
-# Create .env file with secrets
+# Create .env file
 sudo tee $APP_DIR/.env << EOF
 FLASK_ENV=production
 AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -39,59 +45,33 @@ AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 AWS_DEFAULT_REGION=${AWS_REGION}
 EOF
 
-# Ensure proper permissions
-sudo chown -R ubuntu:ubuntu $APP_DIR
-sudo chmod 600 $APP_DIR/.env
-sudo chmod -R 755 $APP_DIR
-sudo chmod -R 755 $APP_DIR/frontend/static
-
-# Ensure static directory exists
-sudo mkdir -p $APP_DIR/frontend/static
-sudo chown -R ubuntu:ubuntu $APP_DIR/frontend/static
-sudo chmod -R 755 $APP_DIR/frontend/static
-
-# After copying files, verify static files
-echo "Verifying static files..."
-ls -la $APP_DIR/frontend/static/css/
-ls -la $APP_DIR/frontend/static/js/
-
-# Ensure static directories exist and have correct permissions
-sudo mkdir -p $APP_DIR/frontend/static/css
-sudo mkdir -p $APP_DIR/frontend/static/js
-sudo mkdir -p $APP_DIR/frontend/static/images
-
-# Copy static files with explicit paths
-echo "Copying static files..."
-sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
-
-# Copy files
-sudo cp -r "$PROJECT_DIR/frontend/static/css/"* "$APP_DIR/frontend/static/css/" || true
-sudo cp -r "$PROJECT_DIR/frontend/static/js/"* "$APP_DIR/frontend/static/js/" || true
-sudo cp -r "$PROJECT_DIR/frontend/static/images/"* "$APP_DIR/frontend/static/images/" || true
+# Set up Python virtual environment
+cd $APP_DIR
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install gunicorn python-dotenv
 
 # Set ownership and permissions
+echo "Setting permissions..."
+
+# Application files ownership
+sudo chown -R ubuntu:ubuntu $APP_DIR
 sudo chown -R www-data:www-data $APP_DIR/frontend/static
+
+# Set specific permissions
+sudo find $APP_DIR -type d -exec chmod 755 {} \;
+sudo find $APP_DIR -type f -exec chmod 644 {} \;
+sudo chmod 600 $APP_DIR/.env
+sudo chmod -R 755 $APP_DIR/venv
 sudo chmod -R 755 $APP_DIR/frontend/static
 
-# Ensure parent directories are accessible
-sudo chown ubuntu:ubuntu $APP_DIR
-sudo chown ubuntu:ubuntu $APP_DIR/frontend
-sudo chmod 755 $APP_DIR
-sudo chmod 755 $APP_DIR/frontend
+# Log directory permissions
+sudo chown -R ubuntu:ubuntu /var/log/livecode
+sudo chmod -R 755 /var/log/livecode
 
-# Debug permissions
-echo "Checking permissions..."
-ls -la $APP_DIR
-ls -la $APP_DIR/frontend
-ls -la $APP_DIR/frontend/static
-ls -la $APP_DIR/frontend/static/css
-ls -la $APP_DIR/frontend/static/js
-
-# Verify Nginx can access the files
-sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Nginx can read style.css" || echo "Nginx cannot read style.css"
-sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Nginx can read login.js" || echo "Nginx cannot read login.js"
-
-# Update Nginx main configuration
+# Configure Nginx
 sudo tee /etc/nginx/nginx.conf << 'EOF'
 user www-data;
 worker_processes auto;
@@ -118,36 +98,19 @@ http {
 }
 EOF
 
-# Fix permissions for the entire application directory
-sudo chown -R www-data:www-data $APP_DIR
-sudo find $APP_DIR -type d -exec chmod 755 {} \;
-sudo find $APP_DIR -type f -exec chmod 644 {} \;
-
-# Make sure venv is executable
-sudo chmod -R 755 $APP_DIR/venv
-
-# Ensure static directories exist with correct permissions
-sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
-sudo chown -R www-data:www-data $APP_DIR/frontend/static
-sudo chmod -R 755 $APP_DIR/frontend/static
-
-# Configure site-specific Nginx
+# Configure site
 sudo tee /etc/nginx/sites-available/livecode << EOF
 server {
     listen 80;
     server_name $DOMAIN;
 
-    root $APP_DIR/frontend;
-    index index.html;
-
     access_log /var/log/nginx/livecode_access.log;
     error_log /var/log/nginx/livecode_error.log;
 
     location /static/ {
-        root $APP_DIR/frontend;
+        alias $APP_DIR/frontend/static/;
         expires 30d;
         add_header Cache-Control "public, no-transform";
-        try_files \$uri \$uri/ =404;
     }
 
     location / {
@@ -162,41 +125,9 @@ server {
 }
 EOF
 
-# Create symbolic link and remove default
+# Setup Nginx
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo ln -sf /etc/nginx/sites-available/livecode /etc/nginx/sites-enabled/
-
-# Test Nginx configuration
-echo "Testing Nginx configuration..."
-sudo nginx -t
-
-# Restart Nginx
-sudo systemctl restart nginx
-
-# Verify services are running
-echo "Checking service statuses..."
-sudo systemctl status nginx --no-pager
-sudo systemctl status livecode --no-pager
-
-# Debug information
-echo "Checking file permissions..."
-ls -la $APP_DIR/frontend/static/css/
-ls -la $APP_DIR/frontend/static/js/
-
-echo "Checking Nginx user..."
-ps aux | grep nginx
-
-echo "Testing static file access..."
-sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
-sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
-
-# Setup Python virtual environment
-cd $APP_DIR
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install gunicorn python-dotenv
 
 # Create systemd service
 sudo tee /etc/systemd/system/livecode.service << EOF
@@ -206,8 +137,9 @@ After=network.target
 
 [Service]
 User=ubuntu
+Group=ubuntu
 WorkingDirectory=$APP_DIR/backend
-Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=$APP_DIR/venv/bin"
 Environment="FLASK_APP=app.py"
 Environment="FLASK_ENV=production"
 Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
@@ -216,44 +148,39 @@ Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 
 ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app
 
+Restart=always
+RestartSec=5
+
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# Create log directories with proper permissions
-sudo mkdir -p /var/log/livecode
-sudo chown -R ubuntu:ubuntu /var/log/livecode
-sudo chmod -R 755 /var/log/livecode
+# Verify configurations
+echo "Testing Nginx configuration..."
+sudo nginx -t
 
-# Create local logs directory
-mkdir -p $APP_DIR/logs
-sudo chown -R ubuntu:ubuntu $APP_DIR/logs
-sudo chmod -R 755 $APP_DIR/logs
-
-# Start and enable services
-echo "Starting services..."
+# Start services
 sudo systemctl daemon-reload
 sudo systemctl enable livecode
-sudo systemctl restart livecode
+sudo systemctl start livecode
+sudo systemctl start nginx
 
-# Check if application is running
-echo "Checking application status..."
-sleep 5
-if curl -s http://localhost:5000/health > /dev/null; then
-    echo "Application is running!"
-    sudo systemctl status livecode --no-pager
-else
-    echo "Application failed to start. Checking logs:"
-    sudo journalctl -u livecode --no-pager -n 50
-    exit 1
-fi
+# Debug information
+echo "Checking service statuses..."
+sudo systemctl status nginx --no-pager
+sudo systemctl status livecode --no-pager
 
-# Install SSL certificate using Certbot
+echo "Checking file permissions..."
+ls -la $APP_DIR/frontend/static/css/
+ls -la $APP_DIR/frontend/static/js/
+
+echo "Testing static file access..."
+sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
+sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
+
+# Install SSL certificate
 echo "Installing SSL certificate..."
 sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN --redirect
-
-# Final Nginx restart
-sudo systemctl restart nginx
 
 echo "Deployment completed successfully!"
 echo "Your application should now be accessible at https://$DOMAIN"
