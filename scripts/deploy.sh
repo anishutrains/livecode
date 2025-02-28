@@ -22,8 +22,8 @@ sudo mkdir -p $APP_DIR
 
 # Copy application files
 echo "Copying application files..."
-sudo cp -r ../frontend $APP_DIR/
-sudo cp -r ../backend $APP_DIR/
+sudo cp -r frontend $APP_DIR/
+sudo cp -r backend $APP_DIR/
 sudo cp requirements.txt $APP_DIR/
 
 # Set up Python virtual environment
