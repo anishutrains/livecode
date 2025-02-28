@@ -62,13 +62,34 @@ sudo mkdir -p $APP_DIR/frontend/static/images
 
 # Copy static files with explicit paths
 echo "Copying static files..."
-sudo cp -r "$PROJECT_DIR/frontend/static/css/"* "$APP_DIR/frontend/static/css/"
-sudo cp -r "$PROJECT_DIR/frontend/static/js/"* "$APP_DIR/frontend/static/js/"
-sudo cp -r "$PROJECT_DIR/frontend/static/images/"* "$APP_DIR/frontend/static/images/"
+sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
 
-# Set permissions
-sudo chown -R ubuntu:ubuntu $APP_DIR/frontend/static
+# Copy files
+sudo cp -r "$PROJECT_DIR/frontend/static/css/"* "$APP_DIR/frontend/static/css/" || true
+sudo cp -r "$PROJECT_DIR/frontend/static/js/"* "$APP_DIR/frontend/static/js/" || true
+sudo cp -r "$PROJECT_DIR/frontend/static/images/"* "$APP_DIR/frontend/static/images/" || true
+
+# Set ownership and permissions
+sudo chown -R www-data:www-data $APP_DIR/frontend/static
 sudo chmod -R 755 $APP_DIR/frontend/static
+
+# Ensure parent directories are accessible
+sudo chown ubuntu:ubuntu $APP_DIR
+sudo chown ubuntu:ubuntu $APP_DIR/frontend
+sudo chmod 755 $APP_DIR
+sudo chmod 755 $APP_DIR/frontend
+
+# Debug permissions
+echo "Checking permissions..."
+ls -la $APP_DIR
+ls -la $APP_DIR/frontend
+ls -la $APP_DIR/frontend/static
+ls -la $APP_DIR/frontend/static/css
+ls -la $APP_DIR/frontend/static/js
+
+# Verify Nginx can access the files
+sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Nginx can read style.css" || echo "Nginx cannot read style.css"
+sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Nginx can read login.js" || echo "Nginx cannot read login.js"
 
 # Verify Nginx configuration
 echo "Testing Nginx configuration..."
@@ -184,4 +205,31 @@ echo "Your application should now be accessible at https://$DOMAIN"
 echo "Service status:"
 sudo systemctl status livecode --no-pager
 echo "Nginx status:"
-sudo systemctl status nginx --no-pager 
+sudo systemctl status nginx --no-pager
+
+# Update Nginx configuration to run as www-data
+sudo tee /etc/nginx/nginx.conf << EOF
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 768;
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    types_hash_max_size 2048;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+    gzip on;
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+EOF 
