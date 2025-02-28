@@ -91,7 +91,7 @@ ls -la $APP_DIR/frontend/static/js
 sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Nginx can read style.css" || echo "Nginx cannot read style.css"
 sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Nginx can read login.js" || echo "Nginx cannot read login.js"
 
-# Update Nginx main configuration first
+# Update Nginx main configuration
 sudo tee /etc/nginx/nginx.conf << 'EOF'
 user www-data;
 worker_processes auto;
@@ -118,21 +118,36 @@ http {
 }
 EOF
 
-# Configure site-specific Nginx configuration
+# Fix permissions for the entire application directory
+sudo chown -R www-data:www-data $APP_DIR
+sudo find $APP_DIR -type d -exec chmod 755 {} \;
+sudo find $APP_DIR -type f -exec chmod 644 {} \;
+
+# Make sure venv is executable
+sudo chmod -R 755 $APP_DIR/venv
+
+# Ensure static directories exist with correct permissions
+sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
+sudo chown -R www-data:www-data $APP_DIR/frontend/static
+sudo chmod -R 755 $APP_DIR/frontend/static
+
+# Configure site-specific Nginx
 sudo tee /etc/nginx/sites-available/livecode << EOF
 server {
     listen 80;
     server_name $DOMAIN;
 
+    root $APP_DIR/frontend;
+    index index.html;
+
     access_log /var/log/nginx/livecode_access.log;
     error_log /var/log/nginx/livecode_error.log;
 
-    # Handle static files directly through Nginx
-    location /static {
-        alias $APP_DIR/frontend/static;
-        try_files \$uri \$uri/ =404;
+    location /static/ {
+        root $APP_DIR/frontend;
         expires 30d;
         add_header Cache-Control "public, no-transform";
+        try_files \$uri \$uri/ =404;
     }
 
     location / {
@@ -148,25 +163,32 @@ server {
 EOF
 
 # Create symbolic link and remove default
-sudo ln -sf /etc/nginx/sites-available/livecode /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo ln -sf /etc/nginx/sites-available/livecode /etc/nginx/sites-enabled/
 
 # Test Nginx configuration
 echo "Testing Nginx configuration..."
 sudo nginx -t
 
-# Set permissions for static files
-sudo chown -R www-data:www-data $APP_DIR/frontend/static
-sudo chmod -R 755 $APP_DIR/frontend/static
-sudo chmod 755 $APP_DIR
-sudo chmod 755 $APP_DIR/frontend
-
 # Restart Nginx
 sudo systemctl restart nginx
 
-# Verify Nginx is running
-echo "Checking Nginx status..."
+# Verify services are running
+echo "Checking service statuses..."
 sudo systemctl status nginx --no-pager
+sudo systemctl status livecode --no-pager
+
+# Debug information
+echo "Checking file permissions..."
+ls -la $APP_DIR/frontend/static/css/
+ls -la $APP_DIR/frontend/static/js/
+
+echo "Checking Nginx user..."
+ps aux | grep nginx
+
+echo "Testing static file access..."
+sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
+sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
 
 # Setup Python virtual environment
 cd $APP_DIR
