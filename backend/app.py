@@ -32,23 +32,21 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=False,  # Try without secure cookies first
+    SESSION_COOKIE_SECURE=True,  # Set back to True for HTTPS
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
-    # Only set cookie domain in production
-    **({"SESSION_COOKIE_DOMAIN": "livecode.awscertif.site"} if os.getenv('FLASK_ENV') == 'production' else {}),
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
-    SESSION_PROTECTION='strong'
+    SESSION_COOKIE_DOMAIN='.livecode.awscertif.site',  # Note the dot prefix
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
 )
 CORS(app, 
     supports_credentials=True,
     resources={
         r"/*": {
-            "origins": ["*"],  # Allow all origins temporarily
+            "origins": ["https://livecode.awscertif.site"],
             "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type"],
-            "expose_headers": ["Content-Range", "X-Content-Range"],
+            "expose_headers": ["Set-Cookie"],  # Important!
             "supports_credentials": True
         }
     }
@@ -204,22 +202,25 @@ def login():
             session['user'] = email
             session['authenticated'] = True
             
+            # Create response
             response = make_response(jsonify({
                 "success": True,
                 "redirect": "/editor"
             }))
             
-            # Explicitly set cookie parameters
-            domain = urlparse(request.url_root).netloc.split(':')[0]
+            # Set session cookie explicitly
+            session_value = app.session_interface.get_signing_serializer(app).dumps(dict(session))
             response.set_cookie(
                 'livecode_session',
-                session.get('user'),
+                session_value,
                 httponly=True,
-                secure=False,  # Set to False temporarily
+                secure=True,
                 samesite='Lax',
-                domain=domain if domain != 'localhost' else None
+                domain='.livecode.awscertif.site',
+                max_age=24 * 60 * 60  # 24 hours
             )
             
+            app.logger.info(f"Setting cookie: {response.headers.get('Set-Cookie')}")
             return response
         else:
             app.logger.warning("Login failed - invalid credentials")
@@ -482,6 +483,20 @@ def debug_session():
         'secure_cookie': app.config.get('SESSION_COOKIE_SECURE'),
         'cookie_domain': app.config.get('SESSION_COOKIE_DOMAIN')
     })
+
+@app.route('/test-cookie')
+def test_cookie():
+    response = make_response('Setting test cookie')
+    response.set_cookie(
+        'test_cookie',
+        'test_value',
+        httponly=True,
+        secure=True,
+        samesite='Lax',
+        domain='.livecode.awscertif.site',
+        max_age=3600
+    )
+    return response
 
 if __name__ == '__main__':
     logger.info("Starting application...")
