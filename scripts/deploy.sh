@@ -118,7 +118,7 @@ http {
 EOF
 
 # Configure site
-sudo tee /etc/nginx/sites-available/livecode << EOF
+sudo tee /etc/nginx/sites-available/livecode << 'EOF'
 server {
     listen 80;
     server_name $DOMAIN;
@@ -138,16 +138,17 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Add these lines for better cookie handling
         proxy_set_header Cookie $http_cookie;
         proxy_cookie_path / "/; secure; HttpOnly; SameSite=Lax";
-        
         proxy_connect_timeout 300s;
         proxy_read_timeout 300s;
     }
 }
 EOF
+
+# Replace variables in the config
+sudo sed -i "s|\$DOMAIN|$DOMAIN|g" /etc/nginx/sites-available/livecode
+sudo sed -i "s|\$APP_DIR|$APP_DIR|g" /etc/nginx/sites-available/livecode
 
 # Setup Nginx
 sudo rm -f /etc/nginx/sites-enabled/default
