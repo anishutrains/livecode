@@ -11,7 +11,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ email, password }),
-            credentials: 'same-origin'
+            credentials: 'include'
         });
         
         const data = await response.json();

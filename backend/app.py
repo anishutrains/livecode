@@ -14,6 +14,7 @@ import traceback
 from dotenv import load_dotenv
 from config.config import get_config
 import secrets
+from urllib.parse import urlparse
 
 # Load environment variables
 load_dotenv()
@@ -31,7 +32,7 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=True if os.getenv('FLASK_ENV') == 'production' else False,  # Only require HTTPS in production
+    SESSION_COOKIE_SECURE=False,  # Try without secure cookies first
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
@@ -44,11 +45,7 @@ CORS(app,
     supports_credentials=True,
     resources={
         r"/*": {
-            "origins": [
-                "https://livecode.awscertif.site",
-                "http://localhost:5000",
-                "http://127.0.0.1:5000"
-            ] if os.getenv('FLASK_ENV') == 'production' else ["http://localhost:5000"],
+            "origins": ["*"],  # Allow all origins temporarily
             "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type"],
             "expose_headers": ["Content-Range", "X-Content-Range"],
@@ -197,35 +194,37 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        app.logger.info("Login attempt received")
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
         
-        app.logger.info(f"Login attempt for email: {email}")
-        
-        try:
-            if email == "admin@example.com" and password == "password":
-                session.clear()  # Clear any existing session
-                session.permanent = True
-                session['user'] = email
-                session['authenticated'] = True
-                app.logger.info(f"Login successful. Session: {session}")
+        if email == "admin@example.com" and password == "password":
+            session.clear()
+            session.permanent = True
+            session['user'] = email
+            session['authenticated'] = True
+            
+            response = make_response(jsonify({
+                "success": True,
+                "redirect": "/editor"
+            }))
+            
+            # Explicitly set cookie parameters
+            domain = urlparse(request.url_root).netloc.split(':')[0]
+            response.set_cookie(
+                'livecode_session',
+                session.get('user'),
+                httponly=True,
+                secure=False,  # Set to False temporarily
+                samesite='Lax',
+                domain=domain if domain != 'localhost' else None
+            )
+            
+            return response
+        else:
+            app.logger.warning("Login failed - invalid credentials")
+            return jsonify({"success": False, "error": "Invalid credentials"}), 401
                 
-                response = make_response(jsonify({
-                    "success": True, 
-                    "redirect": "/editor",
-                    "user": email
-                }))
-                return response
-            else:
-                app.logger.warning("Login failed - invalid credentials")
-                return jsonify({"success": False, "error": "Invalid credentials"}), 401
-                
-        except Exception as e:
-            app.logger.error(f"Login error: {str(e)}")
-            return jsonify({"success": False, "error": str(e)}), 500
-    
     return render_template('login.html')
 
 @app.route('/editor')
