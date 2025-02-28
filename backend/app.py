@@ -31,11 +31,12 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=True if os.getenv('FLASK_ENV') == 'production' else False,  # Only require HTTPS in production
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
-    SESSION_COOKIE_DOMAIN='livecode.awscertif.site',
+    # Only set cookie domain in production
+    **({"SESSION_COOKIE_DOMAIN": "livecode.awscertif.site"} if os.getenv('FLASK_ENV') == 'production' else {}),
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
     SESSION_PROTECTION='strong'
 )
@@ -45,9 +46,9 @@ CORS(app,
         r"/*": {
             "origins": [
                 "https://livecode.awscertif.site",
-                "http://livecode.awscertif.site",
-                "http://localhost:5000"
-            ],
+                "http://localhost:5000",
+                "http://127.0.0.1:5000"
+            ] if os.getenv('FLASK_ENV') == 'production' else ["http://localhost:5000"],
             "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type"],
             "expose_headers": ["Content-Range", "X-Content-Range"],
@@ -472,6 +473,16 @@ def favicon():
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     return send_from_directory(app.static_folder, filename)
+
+@app.route('/debug/session')
+def debug_session():
+    return jsonify({
+        'session': dict(session),
+        'cookies': {k: v for k, v in request.cookies.items()},
+        'environment': os.getenv('FLASK_ENV', 'development'),
+        'secure_cookie': app.config.get('SESSION_COOKIE_SECURE'),
+        'cookie_domain': app.config.get('SESSION_COOKIE_DOMAIN')
+    })
 
 if __name__ == '__main__':
     logger.info("Starting application...")

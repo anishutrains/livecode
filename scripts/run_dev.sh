@@ -11,6 +11,7 @@ cd "$PROJECT_DIR"
 export FLASK_ENV=development
 export FLASK_APP=backend/app.py
 export PYTHONPATH=$PROJECT_DIR
+export FLASK_DEBUG=1
 
-# Run Flask in development mode
-FLASK_DEBUG=1 flask run --host=0.0.0.0 --port=5000 
+# Run Flask with debug mode
+python3 -m flask run --host=0.0.0.0 --port=5000 
