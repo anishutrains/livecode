@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request, render_template, redirect, url_for, s
 from flask_cors import CORS
 import boto3
 from config.aws_config import AWS_ACCESS_KEY, AWS_SECRET_KEY, REGION
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 from botocore.exceptions import ClientError
 import logging
@@ -25,8 +25,23 @@ app = Flask(__name__,
     static_folder=os.path.join(BASE_DIR, 'frontend', 'static')
 )
 app.config.from_object(get_config())
-app.secret_key = os.urandom(24)  # For session management
-CORS(app, supports_credentials=True)
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))  # Use consistent secret key
+app.config['SESSION_COOKIE_SECURE'] = True  # For HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Session lasts 24 hours
+CORS(app, 
+    supports_credentials=True,
+    resources={
+        r"/*": {
+            "origins": ["https://livecode.awscertif.site"],
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type"],
+            "expose_headers": ["Content-Range", "X-Content-Range"],
+            "supports_credentials": True
+        }
+    }
+)
 print(AWS_ACCESS_KEY)
 print(AWS_SECRET_KEY)
 print(REGION)
@@ -165,8 +180,8 @@ def login():
         app.logger.info(f"Login attempt for email: {email}")
         
         try:
-            # Your existing login logic
             if email == "admin@example.com" and password == "password":
+                session.permanent = True  # Make the session permanent
                 session['user'] = email
                 app.logger.info("Login successful")
                 return jsonify({"success": True, "redirect": "/editor"})
@@ -182,8 +197,11 @@ def login():
 
 @app.route('/editor')
 def editor():
+    app.logger.info(f"Session contents: {session}")
     if 'user' not in session:
+        app.logger.warning("No user in session, redirecting to login")
         return redirect(url_for('login'))
+    app.logger.info(f"User {session['user']} accessing editor")
     return render_template('editor.html')
 
 @app.route('/view/<classroom_id>')
@@ -369,6 +387,12 @@ def update_notes():
     except Exception as e:
         logger.error(f"Error updating notes: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/check-session')
+def check_session():
+    if 'user' in session:
+        return jsonify({"authenticated": True, "user": session['user']})
+    return jsonify({"authenticated": False}), 401
 
 @app.errorhandler(Exception)
 def handle_error(error):

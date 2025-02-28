@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeEditor();
     initializeEventListeners();
     loadClassList();
+    checkSession();
 });
 
 function initializeTheme() {
@@ -370,4 +371,24 @@ async function login() {
     } catch (error) {
         handleError(error);
     }
-} 
+}
+
+async function checkSession() {
+    try {
+        const response = await fetch('/api/check-session', {
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            window.location.href = '/login';
+        }
+    } catch (error) {
+        console.error('Session check failed:', error);
+        window.location.href = '/login';
+    }
+}
+
+// Check session every 5 minutes
+setInterval(checkSession, 300000);
+
+// Check session on page load
+document.addEventListener('DOMContentLoaded', checkSession); 
