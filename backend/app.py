@@ -31,17 +31,23 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=False if os.getenv('FLASK_ENV') == 'development' else True,
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_NAME='livecode_session',
+    SESSION_COOKIE_DOMAIN='livecode.awscertif.site',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
-    SESSION_COOKIE_NAME='livecode_session'
+    SESSION_PROTECTION='strong'
 )
 CORS(app, 
     supports_credentials=True,
     resources={
         r"/*": {
-            "origins": ["https://livecode.awscertif.site"],
+            "origins": [
+                "https://livecode.awscertif.site",
+                "http://livecode.awscertif.site",
+                "http://localhost:5000"
+            ],
             "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type"],
             "expose_headers": ["Content-Range", "X-Content-Range"],
@@ -172,6 +178,17 @@ if __name__ != '__main__':
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)
 
+@app.before_request
+def before_request():
+    app.logger.info(f"Request path: {request.path}")
+    app.logger.info(f"Current session: {session}")
+    app.logger.info(f"Request cookies: {request.cookies}")
+
+@app.after_request
+def after_request(response):
+    app.logger.info(f"Response cookies: {response.headers.get('Set-Cookie')}")
+    return response
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))
@@ -191,9 +208,14 @@ def login():
                 session.clear()  # Clear any existing session
                 session.permanent = True
                 session['user'] = email
+                session['authenticated'] = True
                 app.logger.info(f"Login successful. Session: {session}")
                 
-                response = make_response(jsonify({"success": True, "redirect": "/editor"}))
+                response = make_response(jsonify({
+                    "success": True, 
+                    "redirect": "/editor",
+                    "user": email
+                }))
                 return response
             else:
                 app.logger.warning("Login failed - invalid credentials")
@@ -207,10 +229,13 @@ def login():
 
 @app.route('/editor')
 def editor():
-    app.logger.info(f"Session contents: {session}")
-    if 'user' not in session:
-        app.logger.warning("No user in session, redirecting to login")
+    app.logger.info(f"Accessing editor. Session contents: {session}")
+    app.logger.info(f"Request cookies: {request.cookies}")
+    
+    if 'user' not in session or not session.get('authenticated'):
+        app.logger.warning("No authenticated user in session, redirecting to login")
         return redirect(url_for('login'))
+    
     app.logger.info(f"User {session['user']} accessing editor")
     return render_template('editor.html')
 
