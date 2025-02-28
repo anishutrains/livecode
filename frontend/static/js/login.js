@@ -14,11 +14,16 @@ document.getElementById('login-form').addEventListener('submit', async function(
             credentials: 'include'
         });
         
+        if (!response.ok) {
+            throw new Error('Login failed');
+        }
+        
         const data = await response.json();
         
         if (data.success) {
-            console.log("Login successful, redirecting...");
-            window.location.replace(data.redirect);
+            // Force a hard redirect
+            window.location.href = data.redirect;
+            return;
         } else {
             alert(data.error || 'Login failed');
         }

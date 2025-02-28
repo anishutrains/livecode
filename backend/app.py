@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from config.config import get_config
 import secrets
 from urllib.parse import urlparse
+from flask.sessions import SecureCookieSessionInterface
 
 # Load environment variables
 load_dotenv()
@@ -32,11 +33,10 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=True,  # Set back to True for HTTPS
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
-    SESSION_COOKIE_DOMAIN='.livecode.awscertif.site',  # Note the dot prefix
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
 )
 CORS(app, 
@@ -46,7 +46,7 @@ CORS(app,
             "origins": ["https://livecode.awscertif.site"],
             "methods": ["GET", "POST", "OPTIONS"],
             "allow_headers": ["Content-Type"],
-            "expose_headers": ["Set-Cookie"],  # Important!
+            "expose_headers": ["Set-Cookie"],
             "supports_credentials": True
         }
     }
@@ -197,6 +197,7 @@ def login():
         password = data.get('password')
         
         if email == "admin@example.com" and password == "password":
+            # Clear and set new session
             session.clear()
             session.permanent = True
             session['user'] = email
@@ -208,20 +209,9 @@ def login():
                 "redirect": "/editor"
             }))
             
-            # Set session cookie explicitly
-            session_value = app.session_interface.get_signing_serializer(app).dumps(dict(session))
-            response.set_cookie(
-                'livecode_session',
-                session_value,
-                httponly=True,
-                secure=True,
-                samesite='Lax',
-                domain='.livecode.awscertif.site',
-                max_age=24 * 60 * 60  # 24 hours
-            )
-            
-            app.logger.info(f"Setting cookie: {response.headers.get('Set-Cookie')}")
+            # Let Flask handle the session cookie
             return response
+            
         else:
             app.logger.warning("Login failed - invalid credentials")
             return jsonify({"success": False, "error": "Invalid credentials"}), 401
@@ -497,6 +487,11 @@ def test_cookie():
         max_age=3600
     )
     return response
+
+def get_secure_session_cookie(app, session_dict):
+    session_interface = SecureCookieSessionInterface()
+    serializer = session_interface.get_signing_serializer(app)
+    return serializer.dumps(session_dict)
 
 if __name__ == '__main__':
     logger.info("Starting application...")
