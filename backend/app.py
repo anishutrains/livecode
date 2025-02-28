@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, redirect, url_for, session
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session, send_from_directory
 from flask_cors import CORS
 import boto3
 from config.aws_config import AWS_ACCESS_KEY, AWS_SECRET_KEY, REGION
@@ -12,11 +12,19 @@ import time
 import sys
 import traceback
 from dotenv import load_dotenv
+from config.config import get_config
+
+# Load environment variables
+load_dotenv()
+
+# Get base directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = Flask(__name__, 
-    template_folder='../frontend/templates',
-    static_folder='../frontend/static'
+    template_folder=os.path.join(BASE_DIR, 'frontend', 'templates'),
+    static_folder=os.path.join(BASE_DIR, 'frontend', 'static')
 )
+app.config.from_object(get_config())
 app.secret_key = os.urandom(24)  # For session management
 CORS(app, supports_credentials=True)
 print(AWS_ACCESS_KEY)
@@ -369,6 +377,20 @@ def health_check():
             'error': str(e),
             'environment': os.getenv('FLASK_ENV', 'development')
         }), 500
+
+# Add favicon route with correct path
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        os.path.join(BASE_DIR, 'frontend', 'static'),
+        'favicon.ico', 
+        mimetype='image/vnd.microsoft.icon'
+    )
+
+# Add static file handler for development
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(app.static_folder, filename)
 
 if __name__ == '__main__':
     logger.info("Starting application...")

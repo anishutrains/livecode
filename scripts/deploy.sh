@@ -42,6 +42,13 @@ EOF
 # Ensure proper permissions
 sudo chown -R ubuntu:ubuntu $APP_DIR
 sudo chmod 600 $APP_DIR/.env
+sudo chmod -R 755 $APP_DIR
+sudo chmod -R 755 $APP_DIR/frontend/static
+
+# Ensure static directory exists
+sudo mkdir -p $APP_DIR/frontend/static
+sudo chown -R ubuntu:ubuntu $APP_DIR/frontend/static
+sudo chmod -R 755 $APP_DIR/frontend/static
 
 # Setup Python virtual environment
 cd $APP_DIR
@@ -82,18 +89,22 @@ server {
     access_log /var/log/nginx/livecode_access.log;
     error_log /var/log/nginx/livecode_error.log;
 
+    # Handle static files directly through Nginx
+    location /static/ {
+        root $APP_DIR/frontend;
+        try_files \$uri \$uri/ =404;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
     location / {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location /static {
-        alias $APP_DIR/frontend/static;
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
+        proxy_connect_timeout 300s;
+        proxy_read_timeout 300s;
     }
 }
 EOF
