@@ -8,6 +8,9 @@ echo "Starting deployment..."
 # Variables
 DOMAIN="livecode.awscertif.site"
 APP_DIR="/home/ubuntu/livecode"
+PROJECT_DIR="$(dirname "$(dirname "$0")")"  # Get the project root directory
+
+echo "Project directory: $PROJECT_DIR"
 
 # Update system
 echo "Updating system packages..."
@@ -20,9 +23,9 @@ sudo mkdir -p $APP_DIR
 
 # Copy application files
 echo "Copying application files..."
-sudo cp -r frontend $APP_DIR/
-sudo cp -r backend $APP_DIR/
-sudo cp requirements.txt $APP_DIR/
+sudo cp -r "$PROJECT_DIR/frontend" $APP_DIR/
+sudo cp -r "$PROJECT_DIR/backend" $APP_DIR/
+sudo cp "$PROJECT_DIR/requirements.txt" $APP_DIR/
 
 # Create .env file with secrets
 sudo tee $APP_DIR/.env << EOF
