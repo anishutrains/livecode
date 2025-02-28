@@ -46,6 +46,7 @@ FLASK_ENV=production
 AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
 AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 AWS_DEFAULT_REGION=${AWS_REGION}
+FLASK_SECRET_KEY=your-super-secret-key-that-stays-the-same
 EOF
 
 # Set up Python virtual environment as ubuntu user
@@ -172,6 +173,7 @@ Environment="FLASK_ENV=production"
 Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
+Environment="FLASK_SECRET_KEY=your-super-secret-key-that-stays-the-same"
 
 ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app
 

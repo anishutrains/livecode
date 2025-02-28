@@ -23,8 +23,10 @@ load_dotenv()
 # Get base directory
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Generate a strong secret key once
-SECRET_KEY = secrets.token_hex(32)
+# Add a persistent secret key
+SECRET_KEY = 'your-super-secret-key-that-stays-the-same'  # For development
+# In production, load from environment variable
+SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'your-super-secret-key-that-stays-the-same')
 
 app = Flask(__name__, 
     template_folder=os.path.join(BASE_DIR, 'frontend', 'templates'),
