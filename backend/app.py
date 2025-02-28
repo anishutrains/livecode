@@ -154,8 +154,30 @@ if __name__ != '__main__':
 def index():
     return redirect(url_for('login'))
 
-@app.route('/login')
+@app.route('/login', methods=['GET', 'POST'])
 def login():
+    if request.method == 'POST':
+        app.logger.info("Login attempt received")
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+        
+        app.logger.info(f"Login attempt for email: {email}")
+        
+        try:
+            # Your existing login logic
+            if email == "admin@example.com" and password == "password":
+                session['user'] = email
+                app.logger.info("Login successful")
+                return jsonify({"success": True, "redirect": "/editor"})
+            else:
+                app.logger.warning("Login failed - invalid credentials")
+                return jsonify({"success": False, "error": "Invalid credentials"}), 401
+                
+        except Exception as e:
+            app.logger.error(f"Login error: {str(e)}")
+            return jsonify({"success": False, "error": str(e)}), 500
+    
     return render_template('login.html')
 
 @app.route('/editor')
