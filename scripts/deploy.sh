@@ -56,22 +56,39 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install gunicorn python-dotenv
 
-# Set ownership and permissions after venv creation
-echo "Setting permissions..."
+# After setting up virtual environment but before configuring services,
+# add this consolidated permissions section:
 
-# Set specific permissions
+echo "Setting up permissions..."
+
+# Fix parent directory permissions
+sudo chmod 755 /home/ubuntu
+sudo chmod 755 $APP_DIR
+sudo chmod 755 $APP_DIR/frontend
+
+# Set base permissions for application files
 sudo find $APP_DIR -type d -exec chmod 755 {} \;
 sudo find $APP_DIR -type f -exec chmod 644 {} \;
+
+# Set specific permissions
 sudo chmod 600 $APP_DIR/.env
 sudo chmod -R 755 $APP_DIR/venv
 
 # Set static files ownership and permissions
 sudo chown -R www-data:www-data $APP_DIR/frontend/static
-sudo chmod -R 755 $APP_DIR/frontend/static
+sudo find $APP_DIR/frontend/static -type d -exec chmod 755 {} \;
+sudo find $APP_DIR/frontend/static -type f -exec chmod 644 {} \;
 
-# Log directory permissions
+# Set log directory permissions
 sudo chown -R ubuntu:ubuntu /var/log/livecode
 sudo chmod -R 755 /var/log/livecode
+
+# Verify permissions
+echo "Verifying permissions..."
+ls -la $APP_DIR/frontend/static/css/style.css
+ls -la $APP_DIR/frontend/static/js/login.js
+sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
+sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
 
 # Configure Nginx
 sudo tee /etc/nginx/nginx.conf << 'EOF'
@@ -172,18 +189,6 @@ echo "Checking service statuses..."
 sudo systemctl status nginx --no-pager
 sudo systemctl status livecode --no-pager
 
-echo "Checking file permissions..."
-ls -la $APP_DIR/frontend/static/css/
-ls -la $APP_DIR/frontend/static/js/
-
-echo "Testing static file access..."
-sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
-sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
-
-# Install SSL certificate
-echo "Installing SSL certificate..."
-sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN --redirect
-
 echo "Deployment completed successfully!"
 echo "Your application should now be accessible at https://$DOMAIN"
 
@@ -193,29 +198,6 @@ sudo systemctl status livecode --no-pager
 echo "Nginx status:"
 sudo systemctl status nginx --no-pager
 
-# Update Nginx configuration to run as www-data
-sudo tee /etc/nginx/nginx.conf << EOF
-user www-data;
-worker_processes auto;
-pid /run/nginx.pid;
-include /etc/nginx/modules-enabled/*.conf;
-
-events {
-    worker_connections 768;
-}
-
-http {
-    sendfile on;
-    tcp_nopush on;
-    types_hash_max_size 2048;
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-    access_log /var/log/nginx/access.log;
-    error_log /var/log/nginx/error.log;
-    gzip on;
-    include /etc/nginx/conf.d/*.conf;
-    include /etc/nginx/sites-enabled/*;
-}
-EOF 
+# Install SSL certificate
+echo "Installing SSL certificate..."
+sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN --redirect
