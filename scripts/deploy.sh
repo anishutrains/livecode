@@ -91,13 +91,82 @@ ls -la $APP_DIR/frontend/static/js
 sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Nginx can read style.css" || echo "Nginx cannot read style.css"
 sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Nginx can read login.js" || echo "Nginx cannot read login.js"
 
-# Verify Nginx configuration
+# Update Nginx main configuration first
+sudo tee /etc/nginx/nginx.conf << 'EOF'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 768;
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    types_hash_max_size 2048;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+    gzip on;
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+EOF
+
+# Configure site-specific Nginx configuration
+sudo tee /etc/nginx/sites-available/livecode << EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    access_log /var/log/nginx/livecode_access.log;
+    error_log /var/log/nginx/livecode_error.log;
+
+    # Handle static files directly through Nginx
+    location /static {
+        alias $APP_DIR/frontend/static;
+        try_files \$uri \$uri/ =404;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_connect_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}
+EOF
+
+# Create symbolic link and remove default
+sudo ln -sf /etc/nginx/sites-available/livecode /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# Test Nginx configuration
 echo "Testing Nginx configuration..."
 sudo nginx -t
 
-# Add debug output for static files
-echo "Static files in production:"
-ls -R $APP_DIR/frontend/static/
+# Set permissions for static files
+sudo chown -R www-data:www-data $APP_DIR/frontend/static
+sudo chmod -R 755 $APP_DIR/frontend/static
+sudo chmod 755 $APP_DIR
+sudo chmod 755 $APP_DIR/frontend
+
+# Restart Nginx
+sudo systemctl restart nginx
+
+# Verify Nginx is running
+echo "Checking Nginx status..."
+sudo systemctl status nginx --no-pager
 
 # Setup Python virtual environment
 cd $APP_DIR
@@ -129,39 +198,6 @@ ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app
 WantedBy=multi-user.target
 EOF
 
-# Configure Nginx
-sudo tee /etc/nginx/sites-available/livecode << EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-
-    access_log /var/log/nginx/livecode_access.log;
-    error_log /var/log/nginx/livecode_error.log;
-
-    # Handle static files directly through Nginx
-    location /static {
-        alias $APP_DIR/frontend/static;
-        try_files \$uri \$uri/ =404;
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_connect_timeout 300s;
-        proxy_read_timeout 300s;
-    }
-}
-EOF
-
-# Create symbolic link
-sudo ln -sf /etc/nginx/sites-available/livecode /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-
 # Create log directories with proper permissions
 sudo mkdir -p /var/log/livecode
 sudo chown -R ubuntu:ubuntu /var/log/livecode
@@ -177,7 +213,6 @@ echo "Starting services..."
 sudo systemctl daemon-reload
 sudo systemctl enable livecode
 sudo systemctl restart livecode
-sudo systemctl restart nginx
 
 # Check if application is running
 echo "Checking application status..."
