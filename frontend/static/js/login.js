@@ -11,13 +11,14 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ email, password }),
-            credentials: 'include'  // Important for session cookies
+            credentials: 'same-origin'
         });
         
         const data = await response.json();
         
         if (data.success) {
-            window.location.href = data.redirect;
+            console.log("Login successful, redirecting...");
+            window.location.replace(data.redirect);
         } else {
             alert(data.error || 'Login failed');
         }

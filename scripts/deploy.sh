@@ -138,8 +138,13 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Cookie $http_cookie;
-        proxy_cookie_path / "/; secure; HttpOnly; SameSite=Lax";
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Cookie handling
+        proxy_cookie_path / "/; Secure; HttpOnly; SameSite=Lax";
+        proxy_cookie_domain $host livecode.awscertif.site;
+        
         proxy_connect_timeout 300s;
         proxy_read_timeout 300s;
     }

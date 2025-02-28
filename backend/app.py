@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, redirect, url_for, session, send_from_directory
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session, send_from_directory, make_response
 from flask_cors import CORS
 import boto3
 from config.aws_config import AWS_ACCESS_KEY, AWS_SECRET_KEY, REGION
@@ -13,6 +13,7 @@ import sys
 import traceback
 from dotenv import load_dotenv
 from config.config import get_config
+import secrets
 
 # Load environment variables
 load_dotenv()
@@ -20,16 +21,22 @@ load_dotenv()
 # Get base directory
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Generate a strong secret key once
+SECRET_KEY = secrets.token_hex(32)
+
 app = Flask(__name__, 
     template_folder=os.path.join(BASE_DIR, 'frontend', 'templates'),
     static_folder=os.path.join(BASE_DIR, 'frontend', 'static')
 )
 app.config.from_object(get_config())
-app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))  # Use consistent secret key
-app.config['SESSION_COOKIE_SECURE'] = True  # For HTTPS
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Session lasts 24 hours
+app.config.update(
+    SECRET_KEY=SECRET_KEY,
+    SESSION_COOKIE_SECURE=False if os.getenv('FLASK_ENV') == 'development' else True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+    SESSION_COOKIE_NAME='livecode_session'
+)
 CORS(app, 
     supports_credentials=True,
     resources={
@@ -181,10 +188,13 @@ def login():
         
         try:
             if email == "admin@example.com" and password == "password":
-                session.permanent = True  # Make the session permanent
+                session.clear()  # Clear any existing session
+                session.permanent = True
                 session['user'] = email
-                app.logger.info("Login successful")
-                return jsonify({"success": True, "redirect": "/editor"})
+                app.logger.info(f"Login successful. Session: {session}")
+                
+                response = make_response(jsonify({"success": True, "redirect": "/editor"}))
+                return response
             else:
                 app.logger.warning("Login failed - invalid credentials")
                 return jsonify({"success": False, "error": "Invalid credentials"}), 401

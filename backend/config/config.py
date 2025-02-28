@@ -5,7 +5,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 class Config:
     DEBUG = False
     TESTING = False
-    SECRET_KEY = os.urandom(24)
     STATIC_FOLDER = os.path.join(BASE_DIR, 'frontend', 'static')
     TEMPLATE_FOLDER = os.path.join(BASE_DIR, 'frontend', 'templates')
 
