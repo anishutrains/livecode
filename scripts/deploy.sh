@@ -109,7 +109,8 @@ Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
 Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 
-ExecStart=$APP_DIR/venv/bin/gunicorn \
+ExecStart=/bin/bash -c 'mkdir -p /var/log/livecode && \
+    $APP_DIR/venv/bin/gunicorn \
     --workers 3 \
     --bind unix:$APP_DIR/backend/livecode.sock \
     --access-logfile /var/log/livecode/access.log \
@@ -117,7 +118,7 @@ ExecStart=$APP_DIR/venv/bin/gunicorn \
     --capture-output \
     --log-level debug \
     -m 007 \
-    app:app
+    app:app'
 
 Restart=always
 RestartSec=5
@@ -157,15 +158,28 @@ EOF
 sudo ln -sf /etc/nginx/sites-available/livecode /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
-# Create log directories with proper permissions
+# Create log directories and files
+echo "Setting up log directories and files..."
 sudo mkdir -p /var/log/livecode
+sudo mkdir -p $APP_DIR/logs
+
+# Create log files
+sudo touch /var/log/nginx/livecode_access.log
+sudo touch /var/log/nginx/livecode_error.log
+sudo touch /var/log/livecode/access.log
+sudo touch /var/log/livecode/error.log
+
+# Set proper permissions
 sudo chown -R ubuntu:ubuntu /var/log/livecode
 sudo chmod -R 755 /var/log/livecode
+sudo chown ubuntu:ubuntu /var/log/livecode/*.log
+sudo chmod 644 /var/log/livecode/*.log
 
-# Create local logs directory
-mkdir -p $APP_DIR/logs
 sudo chown -R ubuntu:ubuntu $APP_DIR/logs
 sudo chmod -R 755 $APP_DIR/logs
+
+sudo chown www-data:adm /var/log/nginx/livecode_*.log
+sudo chmod 640 /var/log/nginx/livecode_*.log
 
 # Start and enable services
 echo "Starting services..."
