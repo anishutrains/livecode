@@ -31,6 +31,9 @@ sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
 sudo mkdir -p $APP_DIR/logs
 sudo mkdir -p /var/log/livecode
 
+# Set initial ownership to ubuntu user
+sudo chown -R ubuntu:ubuntu $APP_DIR
+
 # Copy application files
 echo "Copying application files..."
 sudo cp -r "$PROJECT_DIR/frontend" $APP_DIR/
@@ -45,7 +48,7 @@ AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
 AWS_DEFAULT_REGION=${AWS_REGION}
 EOF
 
-# Set up Python virtual environment
+# Set up Python virtual environment as ubuntu user
 cd $APP_DIR
 python3 -m venv venv
 source venv/bin/activate
@@ -53,18 +56,17 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install gunicorn python-dotenv
 
-# Set ownership and permissions
+# Set ownership and permissions after venv creation
 echo "Setting permissions..."
-
-# Application files ownership
-sudo chown -R ubuntu:ubuntu $APP_DIR
-sudo chown -R www-data:www-data $APP_DIR/frontend/static
 
 # Set specific permissions
 sudo find $APP_DIR -type d -exec chmod 755 {} \;
 sudo find $APP_DIR -type f -exec chmod 644 {} \;
 sudo chmod 600 $APP_DIR/.env
 sudo chmod -R 755 $APP_DIR/venv
+
+# Set static files ownership and permissions
+sudo chown -R www-data:www-data $APP_DIR/frontend/static
 sudo chmod -R 755 $APP_DIR/frontend/static
 
 # Log directory permissions
