@@ -71,6 +71,19 @@ EOF
 sudo chown -R ubuntu:ubuntu $APP_DIR
 sudo chmod 600 $APP_DIR/.env
 
+# Create .env file in backend directory
+sudo tee $APP_DIR/backend/.env << EOF
+FLASK_ENV=production
+FLASK_APP=app.py
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+AWS_DEFAULT_REGION=${AWS_REGION}
+EOF
+
+# Set proper permissions
+sudo chmod 600 $APP_DIR/backend/.env
+sudo chown ubuntu:ubuntu $APP_DIR/backend/.env
+
 # Setup Python virtual environment
 cd $APP_DIR
 python3 -m venv venv
@@ -91,7 +104,23 @@ WorkingDirectory=$APP_DIR/backend
 Environment="PATH=$APP_DIR/venv/bin"
 Environment="FLASK_APP=app.py"
 Environment="FLASK_ENV=production"
-ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind unix:$APP_DIR/backend/livecode.sock -m 007 app:app
+Environment="PYTHONPATH=$APP_DIR"
+Environment="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
+Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
+
+ExecStart=$APP_DIR/venv/bin/gunicorn \
+    --workers 3 \
+    --bind unix:$APP_DIR/backend/livecode.sock \
+    --access-logfile /var/log/livecode/access.log \
+    --error-logfile /var/log/livecode/error.log \
+    --capture-output \
+    --log-level debug \
+    -m 007 \
+    app:app
+
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -103,9 +132,17 @@ server {
     listen 80;
     server_name $DOMAIN;
     
+    # Add error and access logs
+    access_log /var/log/nginx/livecode_access.log;
+    error_log /var/log/nginx/livecode_error.log;
+    
     location / {
         include proxy_params;
         proxy_pass http://unix:$APP_DIR/backend/livecode.sock;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /static {
@@ -137,14 +174,27 @@ sudo systemctl enable livecode
 sudo systemctl restart livecode
 sudo systemctl restart nginx
 
-# Check if application is running
-echo "Checking application status..."
-sleep 5
-if ! systemctl is-active --quiet livecode; then
-    echo "Service failed to start. Checking logs:"
-    sudo journalctl -u livecode --no-pager -n 50
+# After starting services, add these debugging commands:
+echo "Checking service status and logs..."
+sudo systemctl status livecode
+echo "Checking Nginx error log..."
+sudo tail -n 50 /var/log/nginx/livecode_error.log
+echo "Checking application error log..."
+sudo tail -n 50 /var/log/livecode/error.log
+echo "Checking socket file..."
+ls -l $APP_DIR/backend/livecode.sock
+echo "Checking permissions..."
+ls -l $APP_DIR/backend
+ls -l $APP_DIR/frontend/static
+
+# Check if socket exists and has correct permissions
+if [ ! -S "$APP_DIR/backend/livecode.sock" ]; then
+    echo "Socket file not found!"
     exit 1
 fi
+
+# Verify Nginx configuration
+sudo nginx -t
 
 # Install SSL certificate using Certbot
 echo "Installing SSL certificate..."

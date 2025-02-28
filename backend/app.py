@@ -11,6 +11,7 @@ from functools import lru_cache
 import time
 import sys
 import traceback
+from dotenv import load_dotenv
 
 app = Flask(__name__, 
     template_folder='../frontend/templates',
@@ -130,6 +131,16 @@ logger = setup_logging()
 logger.info("Starting application...")
 logger.info(f"Python version: {sys.version}")
 logger.info(f"Current directory: {os.getcwd()}")
+
+# Load environment variables
+load_dotenv()
+
+# Add error logging
+if __name__ != '__main__':
+    import logging
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
 
 @app.route('/')
 def index():
