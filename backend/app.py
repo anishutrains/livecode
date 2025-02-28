@@ -198,7 +198,7 @@ def login():
         email = data.get('email')
         password = data.get('password')
         
-        if email == "admin@example.com" and password == "password":
+        if email == "admin@utrains.com" and password == "admin":
             # Clear and set new session
             session.clear()
             session.permanent = True
