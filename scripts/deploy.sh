@@ -3,7 +3,7 @@
 # Stop on any error
 set -e
 
-echo "Starting deployment..."
+echo "Starting deployment to production..."
 
 # Variables
 DOMAIN="livecode.awscertif.site"
@@ -50,6 +50,34 @@ sudo mkdir -p $APP_DIR/frontend/static
 sudo chown -R ubuntu:ubuntu $APP_DIR/frontend/static
 sudo chmod -R 755 $APP_DIR/frontend/static
 
+# After copying files, verify static files
+echo "Verifying static files..."
+ls -la $APP_DIR/frontend/static/css/
+ls -la $APP_DIR/frontend/static/js/
+
+# Ensure static directories exist and have correct permissions
+sudo mkdir -p $APP_DIR/frontend/static/css
+sudo mkdir -p $APP_DIR/frontend/static/js
+sudo mkdir -p $APP_DIR/frontend/static/images
+
+# Copy static files with explicit paths
+echo "Copying static files..."
+sudo cp -r "$PROJECT_DIR/frontend/static/css/"* "$APP_DIR/frontend/static/css/"
+sudo cp -r "$PROJECT_DIR/frontend/static/js/"* "$APP_DIR/frontend/static/js/"
+sudo cp -r "$PROJECT_DIR/frontend/static/images/"* "$APP_DIR/frontend/static/images/"
+
+# Set permissions
+sudo chown -R ubuntu:ubuntu $APP_DIR/frontend/static
+sudo chmod -R 755 $APP_DIR/frontend/static
+
+# Verify Nginx configuration
+echo "Testing Nginx configuration..."
+sudo nginx -t
+
+# Add debug output for static files
+echo "Static files in production:"
+ls -R $APP_DIR/frontend/static/
+
 # Setup Python virtual environment
 cd $APP_DIR
 python3 -m venv venv
@@ -90,8 +118,8 @@ server {
     error_log /var/log/nginx/livecode_error.log;
 
     # Handle static files directly through Nginx
-    location /static/ {
-        root $APP_DIR/frontend;
+    location /static {
+        alias $APP_DIR/frontend/static;
         try_files \$uri \$uri/ =404;
         expires 30d;
         add_header Cache-Control "public, no-transform";
