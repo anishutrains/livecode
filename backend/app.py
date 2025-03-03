@@ -35,7 +35,7 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production',#True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
@@ -197,6 +197,28 @@ def login():
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
+
+        # Check if we're in development
+        is_development = os.environ.get('FLASK_ENV') != 'production'
+        
+        # For development, accept any login
+        if is_development:
+            session.clear()
+            session.permanent = True
+            session['user'] = email
+            session['authenticated'] = True
+            
+            # Create response
+            response = make_response(jsonify({
+                "success": True,
+                "redirect": "/editor"
+            }))
+            
+            # Log session details for debugging
+            app.logger.info(f"Development login - Session created: {session}")
+            app.logger.info(f"Response cookies: {response.headers.get('Set-Cookie')}")
+            
+            return response
         
         if email == "admin@utrains.com" and password == "admin":
             # Clear and set new session

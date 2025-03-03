@@ -3,11 +3,74 @@ let currentClassId = null;
 let saveTimeout = null;
 let classesMap = new Map();
 
+// Add theme definitions
+const editorThemes = {
+    dracula: {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+            { token: 'comment', foreground: '6272a4' },
+            { token: 'keyword', foreground: 'ff79c6' },
+            { token: 'string', foreground: 'f1fa8c' },
+            { token: 'number', foreground: 'bd93f9' },
+            { token: 'function', foreground: '50fa7b' },
+            { token: 'class', foreground: '8be9fd' },
+            { token: 'variable', foreground: 'f8f8f2' },
+            { token: 'operator', foreground: 'ff79c6' },
+            { token: 'type', foreground: '8be9fd' }
+        ],
+        colors: {
+            'editor.background': '#282a36',
+            'editor.foreground': '#f8f8f2',
+            'editor.lineHighlightBackground': '#44475a',
+            'editorCursor.foreground': '#f8f8f2',
+            'editor.selectionBackground': '#44475a',
+            'editor.inactiveSelectionBackground': '#44475a',
+            'editorLineNumber.foreground': '#6272a4',
+            'editorLineNumber.activeForeground': '#f8f8f2',
+            'editorGutter.background': '#282a36',
+            'editorGutter.modifiedBackground': '#ffb86c',
+            'editorGutter.addedBackground': '#50fa7b',
+            'editorGutter.deletedBackground': '#ff5555'
+        }
+    },
+    monokai: {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+            { token: 'comment', foreground: '75715e' },
+            { token: 'keyword', foreground: 'f92672' },
+            { token: 'string', foreground: 'e6db74' },
+            { token: 'number', foreground: 'ae81ff' },
+            { token: 'function', foreground: 'a6e22e' },
+            { token: 'class', foreground: '66d9ef' },
+            { token: 'variable', foreground: 'f8f8f2' },
+            { token: 'operator', foreground: 'f92672' },
+            { token: 'type', foreground: '66d9ef' }
+        ],
+        colors: {
+            'editor.background': '#272822',
+            'editor.foreground': '#f8f8f2',
+            'editor.lineHighlightBackground': '#3e3d32',
+            'editorCursor.foreground': '#f8f8f2',
+            'editor.selectionBackground': '#49483e',
+            'editor.inactiveSelectionBackground': '#49483e',
+            'editorLineNumber.foreground': '#75715e',
+            'editorLineNumber.activeForeground': '#f8f8f2',
+            'editorGutter.background': '#272822',
+            'editorGutter.modifiedBackground': '#fd971f',
+            'editorGutter.addedBackground': '#a6e22e',
+            'editorGutter.deletedBackground': '#f92672'
+        }
+    }
+};
+
 // Initialize editor page
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
     initializeEditor();
     initializeEventListeners();
+    initializeUI();
     loadClassList();
     checkSession();
 });
@@ -20,10 +83,17 @@ function initializeTheme() {
 
 function initializeEditor() {
     require(['vs/editor/editor.main'], function() {
+
+        // Register custom themes
+        monaco.editor.defineTheme('dracula', editorThemes.dracula);
+        monaco.editor.defineTheme('monokai', editorThemes.monokai);
+
+        // Get saved theme or default to vs-dark
+        const savedTheme = localStorage.getItem('editorTheme') || 'vs-dark';
         editor = monaco.editor.create(document.getElementById('editor'), {
             value: '',
             language: 'plaintext',
-            theme: 'vs-dark',
+            theme: savedTheme,
             automaticLayout: true,
             minimap: { enabled: true },
             fontSize: 14,
@@ -37,7 +107,24 @@ function initializeEditor() {
             suggestOnTriggerCharacters: true,
             snippetSuggestions: 'inline',
             folding: true,
-            autoIndent: 'full'
+            autoIndent: 'full',
+            bracketPairColorization: {
+                enabled: true
+            },
+            guides: {
+                indentation: true,
+                bracketPairs: true
+            }
+        });
+
+        // Set initial theme in selector
+        document.getElementById('themeSelect').value = savedTheme;
+
+        // Theme selection handler
+        document.getElementById('themeSelect').addEventListener('change', (e) => {
+            const theme = e.target.value;
+            monaco.editor.setTheme(theme);
+            localStorage.setItem('editorTheme', theme);
         });
 
         // Language selection handler
@@ -227,8 +314,19 @@ async function selectClass(classId) {
         document.getElementById('current-class-title').textContent = classData.class_name;
         document.getElementById('share-btn').disabled = false;
 
+        // Update active state in class list
+        document.querySelectorAll('.class-list-item').forEach(item => {
+            item.classList.remove('active');
+            if (item.getAttribute('data-class-id') === classId) {
+                item.classList.add('active');
+            }
+        });
+
         // Enable editor
         editor.updateOptions({ readOnly: false });
+
+        // Show loading state
+        editor.setValue('Loading...');
 
         // Load notes
         const response = await fetch(`/api/notes/${classId}`);
@@ -250,6 +348,10 @@ async function selectClass(classId) {
         } else {
             editor.setValue('');
         }
+
+        // Update last accessed time
+        classData.last_accessed = new Date().toISOString();
+        await loadClassList();
     } catch (error) {
         console.error('Failed to load notes:', error);
         showToast('Failed to load notes', 'error');
@@ -267,6 +369,7 @@ async function updateNotes() {
         };
 
         const classData = classesMap.get(currentClassId);
+        updateSaveStatus('Saving...');
 
         const response = await fetch(`/api/notes/${currentClassId}`, {
             method: 'POST',
@@ -280,10 +383,7 @@ async function updateNotes() {
         });
 
         if (response.ok) {
-            document.getElementById('save-status').textContent = 'All changes saved';
-            setTimeout(() => {
-                document.getElementById('save-status').textContent = '';
-            }, 2000);
+            updateSaveStatus('All changes saved');
             
             if (classData) {
                 classData.last_updated = new Date().toISOString();
@@ -329,8 +429,28 @@ function copyModalShareUrl() {
 }
 
 function showToast(message, type = 'info') {
-    // You can implement a toast notification system here
-    console.log(`${type}: ${message}`);
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.setAttribute('aria-atomic', 'true');
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+    });
 }
 
 // Handle logout
@@ -391,4 +511,65 @@ async function checkSession() {
 setInterval(checkSession, 300000);
 
 // Check session on page load
-document.addEventListener('DOMContentLoaded', checkSession); 
+document.addEventListener('DOMContentLoaded', checkSession);
+
+function initializeUI() {
+    // Set user email in header
+    const userEmail = sessionStorage.getItem('userEmail') || 'User';
+    document.getElementById('userEmail').textContent = userEmail;
+
+    // Initialize tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Initialize search functionality
+    document.getElementById('searchClasses').addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const classItems = document.querySelectorAll('.class-list-item');
+        
+        classItems.forEach(item => {
+            const className = item.querySelector('.fw-bold').textContent.toLowerCase();
+            item.style.display = className.includes(searchTerm) ? 'block' : 'none';
+        });
+    });
+
+    // Initialize fullscreen functionality
+    document.getElementById('fullscreen-btn').addEventListener('click', () => {
+        const editorContainer = document.querySelector('.editor-container');
+        if (!document.fullscreenElement) {
+            editorContainer.requestFullscreen();
+            document.getElementById('fullscreen-btn').innerHTML = '<i class="bi bi-arrows-angle-contract"></i>';
+        } else {
+            document.exitFullscreen();
+            document.getElementById('fullscreen-btn').innerHTML = '<i class="bi bi-arrows-angle-expand"></i>';
+        }
+    });
+
+    // Handle fullscreen change
+    document.addEventListener('fullscreenchange', () => {
+        const btn = document.getElementById('fullscreen-btn');
+        btn.innerHTML = document.fullscreenElement ? 
+            '<i class="bi bi-arrows-angle-contract"></i>' : 
+            '<i class="bi bi-arrows-angle-expand"></i>';
+    });
+
+    // Initialize theme selector
+    const themeSelect = document.getElementById('themeSelect');
+    const savedTheme = localStorage.getItem('editorTheme') || 'vs-dark';
+    themeSelect.value = savedTheme;
+}
+
+// Update the save status display
+function updateSaveStatus(status) {
+    const saveStatus = document.getElementById('save-status');
+    saveStatus.textContent = status;
+    saveStatus.classList.add('visible');
+    
+    if (status === 'All changes saved') {
+        setTimeout(() => {
+            saveStatus.classList.remove('visible');
+        }, 2000);
+    }
+} 
