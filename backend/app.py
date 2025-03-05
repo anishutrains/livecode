@@ -412,6 +412,43 @@ def debug_dynamodb():
             'environment': os.getenv('FLASK_ENV', 'development')
         }), 500
 
+
+@app.route('/api/classes/<classroom_id>', methods=['PUT'])
+def update_class(classroom_id):
+    try:
+        data = request.get_json()
+        class_name = data.get('class_name')
+        
+        if not class_name:
+            return jsonify({'error': 'Class name is required'}), 400
+
+        table = dynamodb.Table('classroom_notes')
+        response = table.get_item(Key={'classroom_id': classroom_id})
+        
+        if 'Item' not in response:
+            return jsonify({'error': 'Class not found'}), 404
+            
+        item = response['Item']
+        item['class_name'] = class_name
+        
+        table.put_item(Item=item)
+        
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print('Error updating class:', str(e))
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/classes/<classroom_id>', methods=['DELETE'])
+def delete_class(classroom_id):
+    try:
+        table = dynamodb.Table('classroom_notes')
+        table.delete_item(Key={'classroom_id': classroom_id})
+        
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        print('Error deleting class:', str(e))
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/api/update_notes', methods=['POST'])
 def update_notes():
     try:

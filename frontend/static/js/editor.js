@@ -241,14 +241,129 @@ function addClassToList(classItem) {
     const lastUpdated = new Date(classItem.last_updated).toLocaleString();
     
     div.innerHTML = `
-        <div class="d-flex flex-column">
-            <div class="fw-bold">${classItem.class_name}</div>
-            <small class="text-muted">Last updated: ${lastUpdated}</small>
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="class-info flex-grow-1" onclick="selectClass('${classItem.classroom_id}')">
+                <div class="fw-bold class-name">${classItem.class_name}</div>
+                <small class="text-muted">Last updated: ${lastUpdated}</small>
+            </div>
+            <div class="class-actions">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editClassName('${classItem.classroom_id}')">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteClass('${classItem.classroom_id}')">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
         </div>
     `;
 
-    div.addEventListener('click', () => selectClass(classItem.classroom_id));
     classListElement.appendChild(div);
+}
+
+
+// Add these new functions for editing and deleting classes
+async function editClassName(classId) {
+    const classData = classesMap.get(classId);
+    if (!classData) return;
+
+    // Show edit modal
+    const modal = new bootstrap.Modal(document.getElementById('editClassModal'));
+    document.getElementById('editClassName').value = classData.class_name;
+    document.getElementById('editClassId').value = classId;
+    modal.show();
+}
+
+async function saveClassName() {
+    const classId = document.getElementById('editClassId').value;
+    const newClassName = document.getElementById('editClassName').value.trim();
+    
+    if (!newClassName) {
+        showToast('Class name cannot be empty', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/classes/${classId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                class_name: newClassName
+            })
+        });
+
+        if (response.ok) {
+            // Update local data
+            const classData = classesMap.get(classId);
+            if (classData) {
+                classData.class_name = newClassName;
+            }
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editClassModal'));
+            modal.hide();
+
+            // Refresh class list
+            await loadClassList();
+            
+            showToast('Class name updated successfully', 'success');
+        } else {
+            throw new Error('Failed to update class name');
+        }
+    } catch (error) {
+        console.error('Failed to update class name:', error);
+        showToast('Failed to update class name', 'error');
+    }
+}
+
+async function deleteClass(classId) {
+    const classData = classesMap.get(classId);
+    if (!classData) return;
+
+    // Show confirmation modal
+    const modal = new bootstrap.Modal(document.getElementById('deleteClassModal'));
+    document.getElementById('deleteClassName').textContent = classData.class_name;
+    document.getElementById('deleteClassId').value = classId;
+    modal.show();
+}
+
+async function confirmDeleteClass() {
+    const classId = document.getElementById('deleteClassId').value;
+    
+    try {
+        const response = await fetch(`/api/classes/${classId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            // Remove from local data
+            classesMap.delete(classId);
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('deleteClassModal'));
+            modal.hide();
+
+            // If this was the current class, clear editor
+            if (currentClassId === classId) {
+                currentClassId = null;
+                editor.setValue('');
+                editor.updateOptions({ readOnly: true });
+                document.getElementById('current-class-title').textContent = 'Select a Class';
+                document.getElementById('share-btn').disabled = true;
+            }
+
+            // Refresh class list
+            await loadClassList();
+            
+            showToast('Class deleted successfully', 'success');
+        } else {
+            throw new Error('Failed to delete class');
+        }
+    } catch (error) {
+        console.error('Failed to delete class:', error);
+        showToast('Failed to delete class', 'error');
+    }
 }
 
 // Show create class modal
