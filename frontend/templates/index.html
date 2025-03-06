@@ -3,37 +3,323 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Classroom Notes</title>
+    <title>LiveCode - Real-time Code Sharing Platform</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/static/css/style.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, #0d6efd 0%, #0099ff 100%);
+            color: white;
+            padding: 100px 0;
+        }
+
+        .feature-card {
+            border: none;
+            border-radius: 15px;
+            transition: transform 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .pricing-card {
+            border: none;
+            border-radius: 15px;
+            transition: transform 0.3s ease;
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .companies-section {
+            background-color: #f8f9fa;
+        }
+
+        .company-logo {
+            max-height: 50px;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .company-logo:hover {
+            opacity: 1;
+        }
+
+        .demo-video {
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-link {
+            color: #333;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: #0d6efd;
+        }
+
+        .btn-primary {
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            border-radius: 50px;
+        }
+
+        .footer {
+            background-color: #2c3e50;
+            color: white;
+            padding: 60px 0 30px;
+        }
+
+        .footer-link {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-link:hover {
+            color: white;
+        }
+    </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <div id="login-section" class="mb-4">
-            <h2>Teacher Login</h2>
-            <form id="login-form">
-                <div class="mb-3">
-                    <input type="email" class="form-control" id="email" placeholder="Email">
+    <!-- Header -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white fixed-top shadow-sm">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="LiveCode" height="40">
+                <span class="ms-2 fw-bold">LiveCode</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#features">Features</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#pricing">Pricing</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#about">About</a>
+                    </li>
+                </ul>
+                <div class="d-flex gap-3">
+                    <a href="/login" class="btn btn-outline-primary">Login</a>
+                    <a href="/signup" class="btn btn-primary">Sign Up</a>
                 </div>
-                <div class="mb-3">
-                    <input type="password" class="form-control" id="password" placeholder="Password">
-                </div>
-                <button type="submit" class="btn btn-primary">Login</button>
-            </form>
+            </div>
         </div>
+    </nav>
 
-        <div id="editor-section" class="d-none">
-            <h2>Classroom Notes</h2>
-            <div class="mb-3">
-                <textarea id="note-editor" class="form-control" rows="10"></textarea>
-            </div>
-            <div class="mb-3">
-                <button id="share-btn" class="btn btn-success">Get Sharing Link</button>
+    <!-- Hero Section -->
+    <section class="hero-section" style="margin-top: 76px;">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-6">
+                    <h1 class="display-4 fw-bold mb-4">Share Code in Real-time</h1>
+                    <p class="lead mb-4">Write, share, and collaborate on code with developers around the world. Perfect for teaching, interviewing, and pair programming.</p>
+                    <div class="d-flex gap-3">
+                        <a href="/signup" class="btn btn-light btn-lg">Get Started Free</a>
+                        <a href="#demo" class="btn btn-outline-light btn-lg">Watch Demo</a>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <img src="{{ url_for('static', filename='images/hero-image.png') }}" alt="LiveCode Editor" class="img-fluid rounded-3 shadow">
+                </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">How LiveCode Helps You</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <i class="bi bi-people-fill text-primary fs-1 mb-3"></i>
+                            <h3 class="h4 mb-3">Code with Your Team</h3>
+                            <p class="text-muted">Share code instantly with your team. Perfect for pair programming and collaborative troubleshooting.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <i class="bi bi-person-workspace text-primary fs-1 mb-3"></i>
+                            <h3 class="h4 mb-3">Interview Developers</h3>
+                            <p class="text-muted">Conduct technical interviews efficiently. Set tasks and observe candidates code in real-time.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card feature-card h-100">
+                        <div class="card-body text-center p-4">
+                            <i class="bi bi-mortarboard-fill text-primary fs-1 mb-3"></i>
+                            <h3 class="h4 mb-3">Teach Programming</h3>
+                            <p class="text-muted">Create an interactive learning environment. Share code with students and provide real-time guidance.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Video Section -->
+    <section id="demo" class="py-5 bg-light">
+        <div class="container">
+            <h2 class="text-center mb-5">See LiveCode in Action</h2>
+            <div class="row justify-content-center">
+                <div class="col-lg-8">
+                    <video class="w-100 demo-video" controls poster="{{ url_for('static', filename='images/video-thumbnail.jpg') }}">
+                        <source src="{{ url_for('static', filename='videos/demo.mp4') }}" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">Simple, Transparent Pricing</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card pricing-card h-100">
+                        <div class="card-body p-4">
+                            <h3 class="text-center mb-4">Free</h3>
+                            <div class="h2 text-center mb-4">$0</div>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Basic code sharing</li>
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Up to 3 collaborators</li>
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Standard support</li>
+                            </ul>
+                            <a href="/signup" class="btn btn-outline-primary w-100 mt-4">Get Started</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card pricing-card h-100 border-primary">
+                        <div class="card-body p-4">
+                            <h3 class="text-center mb-4">Pro</h3>
+                            <div class="h2 text-center mb-4">$19</div>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Unlimited sharing</li>
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Up to 10 collaborators</li>
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Priority support</li>
+                            </ul>
+                            <a href="/signup" class="btn btn-primary w-100 mt-4">Choose Pro</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card pricing-card h-100">
+                        <div class="card-body p-4">
+                            <h3 class="text-center mb-4">Enterprise</h3>
+                            <div class="h2 text-center mb-4">Custom</div>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Custom solutions</li>
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Unlimited collaborators</li>
+                                <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>24/7 support</li>
+                            </ul>
+                            <a href="/contact" class="btn btn-outline-primary w-100 mt-4">Contact Sales</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Companies Section -->
+    <section class="companies-section py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">Trusted by engineers of Leading Companies</h2>
+            <div class="row align-items-center justify-content-center g-4">
+                <div class="col-4 col-md-2 text-center">
+                    <img src="{{ url_for('static', filename='images/companies/google.png') }}" alt="Google" class="company-logo">
+                </div>
+                <div class="col-4 col-md-2 text-center">
+                    <img src="{{ url_for('static', filename='images/companies/microsoft.png') }}" alt="Microsoft" class="company-logo">
+                </div>
+                <div class="col-4 col-md-2 text-center">
+                    <img src="{{ url_for('static', filename='images/companies/amazon.png') }}" alt="Amazon" class="company-logo">
+                </div>
+                <div class="col-4 col-md-2 text-center">
+                    <img src="{{ url_for('static', filename='images/companies/meta.png') }}" alt="Meta" class="company-logo">
+                </div>
+                <div class="col-4 col-md-2 text-center">
+                    <img src="{{ url_for('static', filename='images/companies/apple.png') }}" alt="Apple" class="company-logo">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <h5 class="mb-4">About LiveCode</h5>
+                    <p class="text-muted">LiveCode is a real-time code sharing platform that helps developers collaborate, teach, and interview effectively.</p>
+                </div>
+                <div class="col-md-2">
+                    <h5 class="mb-4">Product</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="#features" class="footer-link">Features</a></li>
+                        <li class="mb-2"><a href="#pricing" class="footer-link">Pricing</a></li>
+                        <li class="mb-2"><a href="/security" class="footer-link">Security</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-2">
+                    <h5 class="mb-4">Company</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="/about" class="footer-link">About Us</a></li>
+                        <li class="mb-2"><a href="/careers" class="footer-link">Careers</a></li>
+                        <li class="mb-2"><a href="/contact" class="footer-link">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-2">
+                    <h5 class="mb-4">Resources</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="/blog" class="footer-link">Blog</a></li>
+                        <li class="mb-2"><a href="/docs" class="footer-link">Documentation</a></li>
+                        <li class="mb-2"><a href="/support" class="footer-link">Support</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-2">
+                    <h5 class="mb-4">Legal</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><a href="/privacy" class="footer-link">Privacy Policy</a></li>
+                        <li class="mb-2"><a href="/terms" class="footer-link">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="my-4 border-light">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <p class="mb-0 text-muted">© 2024 LiveCode. All rights reserved.</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <div class="d-flex gap-3 justify-content-md-end">
+                        <a href="#" class="footer-link"><i class="bi bi-twitter"></i></a>
+                        <a href="#" class="footer-link"><i class="bi bi-linkedin"></i></a>
+                        <a href="#" class="footer-link"><i class="bi bi-github"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/main.js"></script>
 </body>
-</html> 
+</html>

@@ -187,9 +187,13 @@ def after_request(response):
     app.logger.info(f"Response cookies: {response.headers.get('Set-Cookie')}")
     return response
 
+# @app.route('/')
+# def index():
+#     return redirect(url_for('login'))
+
 @app.route('/')
 def index():
-    return redirect(url_for('login'))
+    return render_template('index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
