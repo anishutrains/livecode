@@ -17,6 +17,14 @@ import secrets
 from urllib.parse import urlparse
 from flask.sessions import SecureCookieSessionInterface
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import random
+import string
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
+
 # Load environment variables
 load_dotenv()
 
@@ -64,17 +72,47 @@ dynamodb = boto3.resource('dynamodb',
     region_name=REGION
 )
 
-# Create DynamoDB table if it doesn't exist
-def create_table_if_not_exists():
+# Create a new DynamoDB table for users if it doesn't exist
+def create_users_table():
     try:
-        # Check if table exists
-        table = dynamodb.Table('classroom_notes')
+        table = dynamodb.Table('users')
         table.table_status
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFoundException':
-            # Create the table
             table = dynamodb.create_table(
-                TableName='classroom_notes',
+                TableName='users',
+                KeySchema=[
+                    {
+                        'AttributeName': 'email',
+                        'KeyType': 'HASH'
+                    }
+                ],
+                AttributeDefinitions=[
+                    {
+                        'AttributeName': 'email',
+                        'AttributeType': 'S'
+                    }
+                ],
+                ProvisionedThroughput={
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
+                }
+            )
+            table.meta.client.get_waiter('table_exists').wait(TableName='users')
+    return table
+
+# Create users table on startup
+create_users_table()
+
+# Create DynamoDB table if it doesn't exist
+def create_table_if_not_exists():
+    try:
+        table = dynamodb.Table('live_notes')
+        table.table_status
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            table = dynamodb.create_table(
+                TableName='live_notes',
                 KeySchema=[
                     {
                         'AttributeName': 'classroom_id',
@@ -84,7 +122,29 @@ def create_table_if_not_exists():
                 AttributeDefinitions=[
                     {
                         'AttributeName': 'classroom_id',
-                        'AttributeType': 'S'  # String
+                        'AttributeType': 'S'
+                    },
+                    {
+                        'AttributeName': 'user_email',
+                        'AttributeType': 'S'
+                    }
+                ],
+                GlobalSecondaryIndexes=[
+                    {
+                        'IndexName': 'user_email_index',
+                        'KeySchema': [
+                            {
+                                'AttributeName': 'user_email',
+                                'KeyType': 'HASH'
+                            }
+                        ],
+                        'Projection': {
+                            'ProjectionType': 'ALL'
+                        },
+                        'ProvisionedThroughput': {
+                            'ReadCapacityUnits': 5,
+                            'WriteCapacityUnits': 5
+                        }
                     }
                 ],
                 ProvisionedThroughput={
@@ -92,8 +152,7 @@ def create_table_if_not_exists():
                     'WriteCapacityUnits': 5
                 }
             )
-            # Wait for the table to be created
-            table.meta.client.get_waiter('table_exists').wait(TableName='classroom_notes')
+            table.meta.client.get_waiter('table_exists').wait(TableName='live_notes')
         else:
             raise e
     return table
@@ -202,6 +261,18 @@ def login():
         email = data.get('email')
         password = data.get('password')
 
+        # Get user data
+        users_table = dynamodb.Table('users')
+        user = users_table.get_item(
+            Key={'email': email}
+        ).get('Item')
+
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+        if not user.get('verified'):
+            return jsonify({'success': False, 'error': 'Please verify your email first'}), 401
+
         # Check if we're in development
         is_development = os.environ.get('FLASK_ENV') != 'production'
         
@@ -224,25 +295,34 @@ def login():
             
             return response
         
-        if email == "admin@utrains.com" and password == "admin":
-            # Clear and set new session
+        # if email == "admin@utrains.com" and password == "admin":
+        #     # Clear and set new session
+        #     session.clear()
+        #     session.permanent = True
+        #     session['user'] = email
+        #     session['authenticated'] = True
+            
+        #     # Create response
+        #     response = make_response(jsonify({
+        #         "success": True,
+        #         "redirect": "/editor"
+        #     }))
+            
+        #     # Let Flask handle the session cookie
+        #     return response
+            
+        # else:
+        #     app.logger.warning("Login failed - invalid credentials")
+        #     return jsonify({"success": False, "error": "Invalid credentials"}), 401
+
+        if check_password_hash(user['password_hash'], password):
             session.clear()
             session.permanent = True
             session['user'] = email
             session['authenticated'] = True
-            
-            # Create response
-            response = make_response(jsonify({
-                "success": True,
-                "redirect": "/editor"
-            }))
-            
-            # Let Flask handle the session cookie
-            return response
-            
-        else:
-            app.logger.warning("Login failed - invalid credentials")
-            return jsonify({"success": False, "error": "Invalid credentials"}), 401
+            return jsonify({'success': True, 'redirect': '/editor'})
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
                 
     return render_template('login.html')
 
@@ -296,7 +376,7 @@ def login_api():
 @lru_cache(maxsize=128)
 def get_cached_notes(classroom_id, timestamp):
     """Cache notes with 2-second granularity"""
-    table = dynamodb.Table('classroom_notes')
+    table = dynamodb.Table('live_notes')
     response = table.get_item(
         Key={
             'classroom_id': classroom_id
@@ -309,6 +389,9 @@ def get_cached_notes(classroom_id, timestamp):
 
 @app.route('/api/notes/<classroom_id>', methods=['GET'])
 def get_notes(classroom_id):
+    if 'user' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
     try:
         # Use 2-second granularity for cache
         timestamp = int(time.time() / 2)
@@ -317,6 +400,10 @@ def get_notes(classroom_id):
         data = get_cached_notes(classroom_id, timestamp)
         
         if data:
+            # Check if the note belongs to the user
+            if data.get('user_email') != session['user']:
+                return jsonify({'error': 'Unauthorized access'}), 403
+                
             return jsonify({
                 'content': data.get('content', ''),
                 'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
@@ -329,18 +416,26 @@ def get_notes(classroom_id):
 
 @app.route('/api/notes/<classroom_id>', methods=['POST'])
 def save_notes(classroom_id):
+    if 'user' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
     try:
         data = request.get_json()
         content = data.get('content', '')
         class_name = data.get('class_name')
+        user_email = session['user']
         
         # Get existing item first
-        table = dynamodb.Table('classroom_notes')
+        table = dynamodb.Table('live_notes')
         existing_item = table.get_item(
             Key={
                 'classroom_id': classroom_id
             }
         ).get('Item', {})
+        
+        # Check if the note belongs to the user
+        if existing_item and existing_item.get('user_email') != user_email:
+            return jsonify({'error': 'Unauthorized access'}), 403
         
         # Keep existing class_name if not provided in request
         if not class_name:
@@ -353,6 +448,7 @@ def save_notes(classroom_id):
         response = table.put_item(
             Item={
                 'classroom_id': classroom_id,
+                'user_email': user_email,
                 'content': content,
                 'class_name': class_name,
                 'last_updated': datetime.now().isoformat()
@@ -365,9 +461,22 @@ def save_notes(classroom_id):
 
 @app.route('/api/classes', methods=['GET'])
 def get_classes():
-    table = dynamodb.Table('classroom_notes')
+    if 'user' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    user_email = session['user']
+    table = dynamodb.Table('live_notes')
+    
     try:
-        response = table.scan()
+        # Query using the GSI
+        response = table.query(
+            IndexName='user_email_index',
+            KeyConditionExpression='user_email = :email',
+            ExpressionAttributeValues={
+                ':email': user_email
+            }
+        )
+        
         classes = response.get('Items', [])
         
         # Filter out empty items and sort by last_updated
@@ -396,12 +505,12 @@ def debug():
 @app.route('/api/debug/dynamodb', methods=['GET'])
 def debug_dynamodb():
     try:
-        table = dynamodb.Table('classroom_notes')
+        table = dynamodb.Table('live_notes')
         response = table.scan()
         items = response.get('Items', [])
         
         debug_info = {
-            'table_name': 'classroom_notes',
+            'table_name': 'live_notes',
             'item_count': len(items),
             'items': items,
             'aws_region': REGION,
@@ -419,20 +528,29 @@ def debug_dynamodb():
 
 @app.route('/api/classes/<classroom_id>', methods=['PUT'])
 def update_class(classroom_id):
+    if 'user' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
     try:
         data = request.get_json()
         class_name = data.get('class_name')
+        user_email = session['user']
         
         if not class_name:
             return jsonify({'error': 'Class name is required'}), 400
 
-        table = dynamodb.Table('classroom_notes')
+        table = dynamodb.Table('live_notes')
         response = table.get_item(Key={'classroom_id': classroom_id})
         
         if 'Item' not in response:
             return jsonify({'error': 'Class not found'}), 404
             
         item = response['Item']
+        
+        # Check if the note belongs to the user
+        if item.get('user_email') != user_email:
+            return jsonify({'error': 'Unauthorized access'}), 403
+            
         item['class_name'] = class_name
         
         table.put_item(Item=item)
@@ -444,10 +562,20 @@ def update_class(classroom_id):
 
 @app.route('/api/classes/<classroom_id>', methods=['DELETE'])
 def delete_class(classroom_id):
+    if 'user' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
     try:
-        table = dynamodb.Table('classroom_notes')
-        table.delete_item(Key={'classroom_id': classroom_id})
+        table = dynamodb.Table('live_notes')
         
+        # Check ownership before deleting
+        response = table.get_item(Key={'classroom_id': classroom_id})
+        if 'Item' in response:
+            item = response['Item']
+            if item.get('user_email') != session['user']:
+                return jsonify({'error': 'Unauthorized access'}), 403
+        
+        table.delete_item(Key={'classroom_id': classroom_id})
         return jsonify({'status': 'success'})
     except Exception as e:
         print('Error deleting class:', str(e))
@@ -464,7 +592,7 @@ def update_notes():
         if not classroom_id:
             return jsonify({'error': 'Missing classroom_id'}), 400
 
-        table = dynamodb.Table('classroom_notes')
+        table = dynamodb.Table('live_notes')
         table.put_item(
             Item={
                 'classroom_id': classroom_id,
@@ -478,6 +606,180 @@ def update_notes():
     except Exception as e:
         logger.error(f"Error updating notes: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+def send_verification_email(email, otp):
+    sender_email = "anish.kumar@utrains.org"  # Replace with your email
+    sender_password = "ntnmofoxxtyfiaqs"   # Replace with your app password
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = email
+    msg['Subject'] = "Verify Your LiveCode Account"
+
+    body = f"""
+    Welcome to LiveCode!
+    
+    Your verification code is: {otp}
+    
+    This code will expire in 10 minutes.
+    
+    If you didn't request this code, please ignore this email.
+    """
+    
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {str(e)}")
+        return False
+
+def generate_otp():
+    return ''.join(random.choices(string.digits, k=6))
+
+@app.route('/signup', methods=['GET'])
+def signup_page():
+    return render_template('signup.html')
+
+@app.route('/verify', methods=['GET'])
+def verify_page():
+    return render_template('verify.html')
+
+@app.route('/api/signup', methods=['POST'])
+def signup():
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        email = data.get('email')
+        password = data.get('password')
+
+        if not all([name, email, password]):
+            return jsonify({'success': False, 'error': 'All fields are required'}), 400
+
+        # Check if user already exists
+        users_table = dynamodb.Table('users')
+        existing_user = users_table.get_item(
+            Key={'email': email}
+        ).get('Item')
+
+        if existing_user:
+            return jsonify({'success': False, 'error': 'Email already registered'}), 400
+
+        # Generate OTP and expiration time
+        otp = generate_otp()
+        otp_expiry = (datetime.now() + timedelta(minutes=10)).isoformat()
+
+        # Store user data with verification status
+        users_table.put_item(
+            Item={
+                'email': email,
+                'name': name,
+                'password_hash': generate_password_hash(password),
+                'verified': False,
+                'otp': otp,
+                'otp_expiry': otp_expiry,
+                'created_at': datetime.now().isoformat()
+            }
+        )
+
+        # Send verification email
+        if send_verification_email(email, otp):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to send verification email'}), 500
+
+    except Exception as e:
+        print(f"Signup error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/verify', methods=['POST'])
+def verify():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        otp = data.get('otp')
+
+        if not all([email, otp]):
+            return jsonify({'success': False, 'error': 'Email and OTP are required'}), 400
+
+        # Get user data
+        users_table = dynamodb.Table('users')
+        user = users_table.get_item(
+            Key={'email': email}
+        ).get('Item')
+
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        # Check if OTP is expired
+        otp_expiry = datetime.fromisoformat(user['otp_expiry'])
+        if datetime.now() > otp_expiry:
+            return jsonify({'success': False, 'error': 'OTP has expired'}), 400
+
+        # Verify OTP
+        if user['otp'] != otp:
+            return jsonify({'success': False, 'error': 'Invalid OTP'}), 400
+
+        # Update user verification status
+        users_table.update_item(
+            Key={'email': email},
+            UpdateExpression='SET verified = :val',
+            ExpressionAttributeValues={':val': True}
+        )
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        print(f"Verification error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/resend-otp', methods=['POST'])
+def resend_otp():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+
+        if not email:
+            return jsonify({'success': False, 'error': 'Email is required'}), 400
+
+        # Get user data
+        users_table = dynamodb.Table('users')
+        user = users_table.get_item(
+            Key={'email': email}
+        ).get('Item')
+
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        # Generate new OTP and expiration time
+        new_otp = generate_otp()
+        new_otp_expiry = (datetime.now() + timedelta(minutes=10)).isoformat()
+
+        # Update user with new OTP
+        users_table.update_item(
+            Key={'email': email},
+            UpdateExpression='SET otp = :otp, otp_expiry = :expiry',
+            ExpressionAttributeValues={
+                ':otp': new_otp,
+                ':expiry': new_otp_expiry
+            }
+        )
+
+        # Send new verification email
+        if send_verification_email(email, new_otp):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to send verification email'}), 500
+
+    except Exception as e:
+        print(f"Resend OTP error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/check-session')
 def check_session():
@@ -498,7 +800,7 @@ def handle_error(error):
 def health_check():
     try:
         # Test DynamoDB connection
-        table = dynamodb.Table('classroom_notes')
+        table = dynamodb.Table('live_notes')
         table.scan(Limit=1)
         
         return jsonify({
