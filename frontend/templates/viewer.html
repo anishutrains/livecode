@@ -180,6 +180,35 @@
                 height: 100vh;
             }
         }
+
+        /* Add this to your existing styles */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+
+        #toast-container .toast {
+            margin-bottom: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .toast {
+            opacity: 1 !important;
+        }
+
+        .bg-info {
+            background-color: #0dcaf0 !important;
+        }
+
+        .bg-success {
+            background-color: #198754 !important;
+        }
+
+        .bg-error {
+            background-color: #dc3545 !important;
+        }
     </style>
 </head>
 <body>
@@ -233,6 +262,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/loader.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/editor/editor.main.nls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.36.1/min/vs/editor/editor.main.js"></script>
+    <!-- Add these new scripts for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/viewer.js') }}"></script>
 </body>

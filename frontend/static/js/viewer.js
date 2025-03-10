@@ -166,33 +166,103 @@ async function generatePDF() {
     try {
         const content = editor.getValue();
         const classTitle = document.getElementById('class-name').textContent;
+        const lastUpdated = document.getElementById('last-updated').textContent;
         
-        // Create a temporary div for PDF generation
-        const tempDiv = document.createElement('div');
-        tempDiv.style.padding = '20px';
-        tempDiv.style.fontFamily = 'Monaco, Consolas, "Courier New", monospace';
+        // Create a styled container for PDF content
+        const container = document.createElement('div');
+        container.style.padding = '20px';
+        container.style.fontFamily = 'Monaco, Consolas, "Courier New", monospace';
+        container.style.maxWidth = '800px';
+        container.style.margin = '0 auto';
         
-        // Add header
-        tempDiv.innerHTML = `
-            <h1 style="margin-bottom: 20px;">${classTitle}</h1>
-            <div style="white-space: pre-wrap; font-family: monospace;">${content}</div>
+        // Add content with styling
+        container.innerHTML = `
+            <div style="text-align: center; margin-bottom: 30px;">
+                <h1 style="color: #333; margin-bottom: 10px;">${classTitle}</h1>
+                <p style="color: #666; font-size: 14px;">${lastUpdated}</p>
+            </div>
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px;">
+                <pre style="white-space: pre-wrap; font-family: Monaco, Consolas, 'Courier New', monospace; 
+                           font-size: 14px; line-height: 1.5; margin: 0;">${content}</pre>
+            </div>
         `;
+
+        // Show loading indicator
+        const loadingToast = showToast('Generating PDF...', 'info', false);
         
-        // PDF options
+        // PDF generation options
         const opt = {
-            margin: 1,
+            margin: [0.5, 0.5],
             filename: `${classTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_notes.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2 },
-            jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            html2canvas: { 
+                scale: 2,
+                useCORS: true,
+                logging: false
+            },
+            jsPDF: { 
+                unit: 'in', 
+                format: 'a4', 
+                orientation: 'portrait'
+            }
         };
 
         // Generate PDF
-        html2pdf().set(opt).from(tempDiv).save();
+        await html2pdf().set(opt).from(container).save();
+        
+        // Hide loading indicator and show success message
+        loadingToast.hide();
+        showToast('PDF downloaded successfully!', 'success');
+        
     } catch (error) {
         console.error('Failed to generate PDF:', error);
-        alert('Failed to generate PDF. Please try again.');
+        showToast('Failed to generate PDF. Please try again.', 'error');
     }
+}
+
+// Add a toast notification function
+function showToast(message, type = 'info', autoHide = true) {
+    const toastContainer = document.getElementById('toast-container') || (() => {
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        `;
+        document.body.appendChild(container);
+        return container;
+    })();
+
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type} border-0`;
+    toast.style.minWidth = '250px';
+    
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                ${message}
+            </div>
+            ${autoHide ? `
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" 
+                        data-bs-dismiss="toast"></button>
+            ` : ''}
+        </div>
+    `;
+    
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast, {
+        autohide: autoHide,
+        delay: 3000
+    });
+    bsToast.show();
+
+    toast.addEventListener('hidden.bs.toast', () => {
+        toast.remove();
+    });
+
+    return bsToast;
 }
 
 // Cleanup on page unload
