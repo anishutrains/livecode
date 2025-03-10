@@ -389,27 +389,44 @@ def get_cached_notes(classroom_id, timestamp):
 
 @app.route('/api/notes/<classroom_id>', methods=['GET'])
 def get_notes(classroom_id):
-    if 'user' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     try:
-        # Use 2-second granularity for cache
-        timestamp = int(time.time() / 2)
+        # Check if this is a view-only request (from shared link)
+        is_view_only = request.args.get('view') == 'true'
         
         # Get cached or fresh data
+        timestamp = int(time.time() / 2)
         data = get_cached_notes(classroom_id, timestamp)
         
         if data:
-            # Check if the note belongs to the user
-            if data.get('user_email') != session['user']:
-                return jsonify({'error': 'Unauthorized access'}), 403
+            if is_view_only:
+                # For view-only access, return content without checking authentication
+                return jsonify({
+                    'content': data.get('content', ''),
+                    'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
+                    'last_updated': data.get('last_updated'),
+                    'view_only': True
+                })
+            else:
+                # For editor access, check authentication
+                if 'user' not in session:
+                    return jsonify({'error': 'Not authenticated'}), 401
                 
-            return jsonify({
-                'content': data.get('content', ''),
-                'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
-                'last_updated': data.get('last_updated')
-            })
-        return jsonify({'content': '', 'class_name': f'Class {classroom_id.split("-")[1]}'})
+                # Check if the note belongs to the user
+                if data.get('user_email') != session['user']:
+                    return jsonify({'error': 'Unauthorized access'}), 403
+                
+                return jsonify({
+                    'content': data.get('content', ''),
+                    'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
+                    'last_updated': data.get('last_updated'),
+                    'view_only': False
+                })
+                
+        return jsonify({
+            'content': '',
+            'class_name': f'Class {classroom_id.split("-")[1]}',
+            'view_only': is_view_only
+        })
     except Exception as e:
         print('Error fetching notes:', str(e))
         return jsonify({'error': str(e)}), 500

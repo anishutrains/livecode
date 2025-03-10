@@ -515,6 +515,7 @@ async function updateNotes() {
 function showShareModal() {
     if (!currentClassId) return;
     
+    // Use the absolute URL with view parameter
     const shareUrl = `${window.location.origin}/view/${currentClassId}`;
     document.getElementById('modal-share-url').value = shareUrl;
     
