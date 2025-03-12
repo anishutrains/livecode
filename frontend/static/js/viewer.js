@@ -1,12 +1,25 @@
 let editor = null;
 let pollInterval = null;
 let lastContent = null;
+let isEditMode = false;
+let recentlySaved = false;
+let recentlySavedTimeout = null;
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Check URL parameters for edit mode
+    const urlParams = new URLSearchParams(window.location.search);
+    isEditMode = urlParams.get('edit') === 'true';
+    
+    // Show edit indicator if in edit mode
+    if (isEditMode) {
+        const editIndicator = document.getElementById('edit-indicator');
+        if (editIndicator) {
+            editIndicator.style.display = 'inline-block';
+        }
+    }
+    
     initializeTheme();
     initializeEditor();
-    setupEventListeners();
-    startPolling();
 });
 
 function initializeEditor() {
@@ -36,7 +49,7 @@ function initializeEditor() {
             value: 'Loading...',
             language: 'plaintext',
             theme: localStorage.getItem('theme') === 'dark' ? 'custom-dark' : 'vs',
-            readOnly: true,
+            readOnly: !isEditMode, // Set readOnly based on edit mode
             automaticLayout: true,
             minimap: { enabled: true },
             fontSize: 14,
@@ -51,13 +64,32 @@ function initializeEditor() {
         });
 
         loadNotes();
+        setupEventListeners();
+        
+        // Setup real-time updates
+        startPolling(); // Always poll for updates, regardless of mode
+        
+        // If in edit mode, also setup autosave
+        if (isEditMode) {
+            setupAutoSave();
+        }
     });
 }
 
 async function loadNotes() {
     try {
         const classId = document.getElementById('viewer').dataset.classroomId;
-        const response = await fetch(`/api/notes/${classId}?view=true`);
+        
+        // Add appropriate parameters based on mode
+        let url = `/api/notes/${classId}?view=true`;
+        if (isEditMode) {
+            url += '&edit=true';
+        }
+        
+        // Add a cache-busting parameter to ensure fresh content
+        url += `&timestamp=${Date.now()}`;
+        
+        const response = await fetch(url);
         
         if (!response.ok) {
             throw new Error('Failed to fetch notes');
@@ -74,14 +106,34 @@ async function loadNotes() {
             if (data.content) {
                 try {
                     const content = JSON.parse(data.content);
-                    editor.setValue(content.text || '');
                     
-                    // Set language if present
-                    if (content.language) {
-                        monaco.editor.setModelLanguage(editor.getModel(), content.language);
+                    // Only update if content has changed and we're not currently editing
+                    // Also don't update if we just saved content ourselves (to avoid loops)
+                    if ((!editor.hasTextFocus() || !isEditMode) && !recentlySaved) {
+                        const currentPosition = editor.getPosition();
+                        
+                        editor.setValue(content.text || '');
+                        
+                        // Restore cursor position if possible
+                        if (currentPosition && isEditMode) {
+                            editor.setPosition(currentPosition);
+                        }
+                        
+                        // Set language if present
+                        if (content.language) {
+                            monaco.editor.setModelLanguage(editor.getModel(), content.language);
+                        }
+                        
+                        // If in edit mode, show a toast notification about the update
+                        if (isEditMode) {
+                            showToast('Document updated from editor', 'info');
+                        }
                     }
                 } catch (e) {
-                    editor.setValue(data.content);
+                    // Fall back to raw content if parsing fails
+                    if (!editor.hasTextFocus() || !isEditMode) {
+                        editor.setValue(data.content);
+                    }
                 }
             } else {
                 editor.setValue('No notes available');
@@ -96,7 +148,7 @@ async function loadNotes() {
             // Remove loading overlay
             const loadingOverlay = document.querySelector('.loading-overlay');
             if (loadingOverlay) {
-                loadingOverlay.remove();
+                loadingOverlay.style.display = 'none';
             }
         }
     } catch (error) {
@@ -107,68 +159,213 @@ async function loadNotes() {
 
 function setupEventListeners() {
     // Theme toggle
-    document.getElementById('theme-toggle').addEventListener('change', (e) => {
-        const theme = e.target.checked ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-        editor.updateOptions({ 
-            theme: theme === 'dark' ? 'custom-dark' : 'vs'
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('change', (e) => {
+            const theme = e.target.checked ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            editor.updateOptions({ 
+                theme: theme === 'dark' ? 'custom-dark' : 'vs'
+            });
         });
-    });
+    }
 
     // Fullscreen button
-    document.getElementById('fullscreen-btn').addEventListener('click', () => {
-        const viewerElement = document.getElementById('viewer');
-        if (!document.fullscreenElement) {
-            viewerElement.requestFullscreen();
-            document.getElementById('fullscreen-btn').innerHTML = `
-                <i class="bi bi-fullscreen-exit"></i>
-                <span>Exit Fullscreen</span>
-            `;
-        } else {
-            document.exitFullscreen();
-            document.getElementById('fullscreen-btn').innerHTML = `
-                <i class="bi bi-arrows-fullscreen"></i>
-                <span>Fullscreen</span>
-            `;
-        }
-    });
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', () => {
+            const viewerElement = document.getElementById('viewer');
+            if (!document.fullscreenElement) {
+                viewerElement.requestFullscreen();
+                fullscreenBtn.innerHTML = `
+                    <i class="bi bi-fullscreen-exit"></i>
+                    <span>Exit Fullscreen</span>
+                `;
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.innerHTML = `
+                    <i class="bi bi-arrows-fullscreen"></i>
+                    <span>Fullscreen</span>
+                `;
+            }
+        });
+    }
 
     // Print button
-    document.getElementById('print-btn').addEventListener('click', () => {
-        window.print();
-    });
+    const printBtn = document.getElementById('print-btn');
+    if (printBtn) {
+        printBtn.addEventListener('click', () => {
+            window.print();
+        });
+    }
 
     // Add PDF download handler
-    document.getElementById('download-pdf').addEventListener('click', generatePDF);
+    const downloadPdfBtn = document.getElementById('download-pdf');
+    if (downloadPdfBtn) {
+        downloadPdfBtn.addEventListener('click', generatePDF);
+    }
 
     // Handle fullscreen change
     document.addEventListener('fullscreenchange', () => {
         const btn = document.getElementById('fullscreen-btn');
-        btn.innerHTML = document.fullscreenElement ? 
-            `<i class="bi bi-fullscreen-exit"></i><span>Exit Fullscreen</span>` : 
-            `<i class="bi bi-arrows-fullscreen"></i><span>Fullscreen</span>`;
+        if (btn) {
+            btn.innerHTML = document.fullscreenElement ? 
+                `<i class="bi bi-fullscreen-exit"></i><span>Exit Fullscreen</span>` : 
+                `<i class="bi bi-arrows-fullscreen"></i><span>Fullscreen</span>`;
+        }
     });
+}
+
+async function setupAutoSave() {
+    // Only set up autosave in edit mode
+    if (!isEditMode || !editor) return;
+    
+    let saveTimeout = null;
+    
+    // Add change event listener to editor
+    editor.onDidChangeModelContent(() => {
+        // Update status visually if we have the element
+        const statusElement = document.getElementById('edit-status');
+        if (statusElement) {
+            statusElement.textContent = 'Unsaved changes';
+            statusElement.classList.add('unsaved');
+        }
+        
+        // Clear any existing timeout
+        if (saveTimeout) clearTimeout(saveTimeout);
+        
+        // Set a new timeout to save after 500ms of inactivity (faster saves)
+        saveTimeout = setTimeout(() => {
+            saveNotes();
+        }, 500); // Quick saves for better real-time collaboration
+    });
+}
+
+async function saveNotes() {
+    // Only proceed if in edit mode
+    if (!isEditMode) return;
+    
+    try {
+        const classId = document.getElementById('viewer').dataset.classroomId;
+        
+        // Update status visually if we have the element
+        const statusElement = document.getElementById('edit-status');
+        if (statusElement) {
+            statusElement.textContent = 'Saving...';
+            statusElement.classList.remove('unsaved');
+            statusElement.classList.add('saving');
+        }
+        
+        // Prepare content object
+        const content = {
+            text: editor.getValue(),
+            language: editor.getModel().getLanguageId(),
+            timestamp: Date.now()
+        };
+        
+        // Set flag to avoid update loop
+        recentlySaved = true;
+        
+        // Clear any existing timeout
+        if (recentlySavedTimeout) {
+            clearTimeout(recentlySavedTimeout);
+        }
+        
+        // Save to API with edit permission
+        const response = await fetch(`/api/notes/${classId}?view=true&edit=true`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                content: JSON.stringify(content)
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save changes');
+        }
+        
+        // Update last saved timestamp
+        document.getElementById('last-updated').textContent = 
+            `Last updated: ${new Date().toLocaleString()}`;
+        
+        // Update status visually if we have the element
+        if (statusElement) {
+            statusElement.textContent = 'All changes saved';
+            statusElement.classList.remove('saving');
+            statusElement.classList.add('saved');
+            
+            // Reset status after a delay
+            setTimeout(() => {
+                statusElement.classList.remove('saved');
+                statusElement.textContent = '';
+            }, 3000);
+        }
+        
+        // Reset the recently saved flag after 1 second
+        recentlySavedTimeout = setTimeout(() => {
+            recentlySaved = false;
+        }, 1000);
+    } catch (error) {
+        console.error('Error saving notes:', error);
+        showToast('Failed to save changes', 'error');
+        
+        // Update status visually on error
+        const statusElement = document.getElementById('edit-status');
+        if (statusElement) {
+            statusElement.textContent = 'Save failed';
+            statusElement.classList.remove('saving');
+            statusElement.classList.add('error');
+        }
+        
+        // Reset the recently saved flag
+        recentlySaved = false;
+    }
 }
 
 function initializeTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.setAttribute('data-theme', savedTheme);
-    document.getElementById('theme-toggle').checked = savedTheme === 'dark';
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.checked = savedTheme === 'dark';
+    }
 }
 
 function startPolling() {
-    // Poll for updates every 5 seconds
-    pollInterval = setInterval(loadNotes, 5000);
+    // Clear any existing polling interval first
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+    
+    // Set polling interval based on mode
+    // For edit mode, check more frequently
+    const interval = isEditMode ? 1000 : 2000; // 1 second in edit mode, 2 seconds in view mode
+    
+    // Start polling at the specified interval
+    pollInterval = setInterval(loadNotes, interval);
+    
+    console.log(`Started polling at ${interval}ms intervals (${isEditMode ? 'edit' : 'view'} mode)`);
 }
 
 async function generatePDF() {
     try {
+        // Check if html2pdf is available
+        if (typeof html2pdf === 'undefined') {
+            throw new Error('PDF generation library not loaded');
+        }
+        
+        showToast('Generating PDF...', 'info');
+        
+        // Get content from editor
         const content = editor.getValue();
         const classTitle = document.getElementById('class-name').textContent;
         const lastUpdated = document.getElementById('last-updated').textContent;
         
-        // Create a styled container for PDF content
+        // Create a styled container for the PDF content
         const container = document.createElement('div');
         container.style.padding = '20px';
         container.style.fontFamily = 'Monaco, Consolas, "Courier New", monospace';
@@ -186,34 +383,29 @@ async function generatePDF() {
                            font-size: 14px; line-height: 1.5; margin: 0;">${content}</pre>
             </div>
         `;
-
-        // Show loading indicator
-        const loadingToast = showToast('Generating PDF...', 'info', false);
         
-        // PDF generation options
+        // Temporarily add to document
+        document.body.appendChild(container);
+
+        // Generate PDF - using window.html2pdf to avoid AMD conflicts
         const opt = {
             margin: [0.5, 0.5],
             filename: `${classTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_notes.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { 
-                scale: 2,
-                useCORS: true,
-                logging: false
-            },
-            jsPDF: { 
-                unit: 'in', 
-                format: 'a4', 
-                orientation: 'portrait'
-            }
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
         };
 
         // Generate PDF
-        await html2pdf().set(opt).from(container).save();
-        
-        // Hide loading indicator and show success message
-        loadingToast.hide();
-        showToast('PDF downloaded successfully!', 'success');
-        
+        window.html2pdf().from(container).set(opt).save().then(() => {
+            // Remove container after PDF generation
+            document.body.removeChild(container);
+            showToast('PDF downloaded successfully!', 'success');
+        }).catch(err => {
+            console.error('Error generating PDF:', err);
+            showToast('Error generating PDF. Please try again.', 'error');
+            document.body.removeChild(container);
+        });
     } catch (error) {
         console.error('Failed to generate PDF:', error);
         showToast('Failed to generate PDF. Please try again.', 'error');

@@ -65,14 +65,161 @@ const editorThemes = {
     }
 };
 
+// Add these code organization features and formatting utilities
+
+const formatOperations = {
+    heading: (level) => {
+        const selection = editor.getSelection();
+        const prefix = '#'.repeat(level) + ' ';
+        
+        // Get the line content
+        const lineNumber = selection.startLineNumber;
+        const lineContent = editor.getModel().getLineContent(lineNumber);
+        
+        if (lineContent.trim().startsWith('#')) {
+            // Replace existing heading
+            const match = lineContent.match(/^(#+)\s/);
+            if (match) {
+                const startPosition = { lineNumber, column: 1 };
+                const endPosition = { lineNumber, column: match[0].length + 1 };
+                const range = new monaco.Range(
+                    startPosition.lineNumber,
+                    startPosition.column,
+                    endPosition.lineNumber,
+                    endPosition.column
+                );
+                
+                editor.executeEdits('heading', [{ range, text: prefix }]);
+            }
+        } else {
+            // Add new heading
+            const range = new monaco.Range(
+                lineNumber,
+                1,
+                lineNumber,
+                1
+            );
+            
+            editor.executeEdits('heading', [{ range, text: prefix }]);
+        }
+    },
+    
+    list: (type) => {
+        const selection = editor.getSelection();
+        const selectedText = editor.getModel().getValueInRange(selection);
+        
+        let lines = selectedText.split('\n');
+        let prefix = type === 'bullet' ? '* ' : '1. ';
+        
+        // Process each line and add the appropriate prefix
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line) {
+                if (type === 'numbered' && i > 0) {
+                    prefix = `${i + 1}. `;
+                }
+                
+                // Check if the line already has a list prefix
+                if (!line.startsWith('* ') && !line.match(/^\d+\.\s/)) {
+                    lines[i] = prefix + line;
+                }
+            }
+        }
+        
+        const newText = lines.join('\n');
+        editor.executeEdits('list', [{
+            range: selection,
+            text: newText,
+            forceMoveMarkers: true
+        }]);
+    },
+    
+    codeBlock: (language) => {
+        const selection = editor.getSelection();
+        const selectedText = editor.getModel().getValueInRange(selection);
+        
+        // Create code block with language
+        const codeBlock = `\`\`\`${language || 'plaintext'}\n${selectedText}\n\`\`\``;
+        
+        editor.executeEdits('codeBlock', [{
+            range: selection,
+            text: codeBlock,
+            forceMoveMarkers: true
+        }]);
+    },
+    
+    highlight: () => {
+        const selection = editor.getSelection();
+        const selectedText = editor.getModel().getValueInRange(selection);
+        
+        const highlightedText = `==${selectedText}==`;
+        
+        editor.executeEdits('highlight', [{
+            range: selection,
+            text: highlightedText,
+            forceMoveMarkers: true
+        }]);
+    },
+    
+    commentBlock: () => {
+        const selection = editor.getSelection();
+        const selectedText = editor.getModel().getValueInRange(selection);
+        
+        const commentedText = `<!-- ${selectedText} -->`;
+        
+        editor.executeEdits('commentBlock', [{
+            range: selection,
+            text: commentedText,
+            forceMoveMarkers: true
+        }]);
+    },
+    
+    textColor: (color) => {
+        const selection = editor.getSelection();
+        const selectedText = editor.getModel().getValueInRange(selection);
+        
+        const coloredText = `<span style="color:${color}">${selectedText}</span>`;
+        
+        editor.executeEdits('textColor', [{
+            range: selection,
+            text: coloredText,
+            forceMoveMarkers: true
+        }]);
+    },
+    
+    addCopyableCodeSnippet: () => {
+        createCopyableCodeBlock();
+    }
+};
+
 // Initialize editor page
-document.addEventListener('DOMContentLoaded', () => {
-    initializeTheme();
-    initializeEditor();
-    initializeEventListeners();
-    initializeUI();
-    loadClassList();
-    checkSession();
+document.addEventListener('DOMContentLoaded', async () => {
+    // Only initialize editor-specific features if we're on the editor page
+    if (window.location.pathname.includes('/editor')) {
+        try {
+            initializeTheme();
+            initializeEditor();
+            initializeEventListeners();
+            initializeUI();
+            
+            // Only initialize format toolbar if we're on a page with the editor
+            if (document.getElementById('editor')) {
+                initializeFormatToolbar();
+            }
+            
+            // Check if the user is authenticated before loading classes
+            await checkSession();
+            await loadClassList();
+            
+            console.log("Editor initialization complete");
+        } catch (error) {
+            console.error("Error during editor initialization:", error);
+            showToast("There was an error setting up the editor. Please refresh the page.", "error");
+        }
+    } else {
+        // For other pages, just check session
+        checkSession();
+    }
 });
 
 function initializeTheme() {
@@ -195,18 +342,35 @@ function initializeEventListeners() {
     document.getElementById('share-btn').addEventListener('click', showShareModal);
     document.getElementById('modal-copy-btn').addEventListener('click', copyModalShareUrl);
     
+    // Permission toggle in share modal
+    document.getElementById('shareEditPermission').addEventListener('change', updateShareUrl);
+    
     // Theme toggle
     document.getElementById('theme-toggle').addEventListener('change', (e) => {
         const theme = e.target.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('theme', theme);
     });
+    
+    // Color picker for text coloring
+    document.getElementById('colorPicker').addEventListener('change', (e) => {
+        formatOperations.textColor(e.target.value);
+        editor.focus();
+    });
 }
 
 // Load existing classes
 async function loadClassList() {
     try {
-        const response = await fetch('/api/classes');
+        console.log("Loading class list...");
+        const response = await fetch('/api/classes', {
+            credentials: 'include' // Ensure cookies are sent
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load classes');
+        }
+        
         const classes = await response.json();
         
         const classListElement = document.getElementById('class-list');
@@ -221,13 +385,18 @@ async function loadClassList() {
             return;
         }
 
+        // Clear existing map to avoid duplicates
+        classesMap.clear();
+        
         classes.forEach(classItem => {
             classesMap.set(classItem.classroom_id, classItem);
             addClassToList(classItem);
         });
+        
+        console.log(`Loaded ${classes.length} classes successfully`);
     } catch (error) {
         console.error('Failed to load classes:', error);
-        showToast('Error loading classes', 'error');
+        showToast('Error loading classes. Please refresh the page.', 'error');
     }
 }
 
@@ -457,6 +626,15 @@ async function selectClass(classId) {
                     document.getElementById('languageSelect').value = content.language;
                     monaco.editor.setModelLanguage(editor.getModel(), content.language);
                 }
+                
+                // Set format options if present
+                if (content.formatOptions) {
+                    const enableMarkdown = document.getElementById('enableMarkdown');
+                    const enableHTML = document.getElementById('enableHTML');
+                    
+                    if (enableMarkdown) enableMarkdown.checked = content.formatOptions.enableMarkdown;
+                    if (enableHTML) enableHTML.checked = content.formatOptions.enableHTML;
+                }
             } catch (e) {
                 editor.setValue(data.content);
             }
@@ -466,47 +644,160 @@ async function selectClass(classId) {
 
         // Update last accessed time
         classData.last_accessed = new Date().toISOString();
-        await loadClassList();
+        
+        // Set up polling for updates from viewers
+        setupRealtimeUpdates();
     } catch (error) {
         console.error('Failed to load notes:', error);
         showToast('Failed to load notes', 'error');
     }
 }
 
-// Update notes
-async function updateNotes() {
+// Add this new function to poll for updates when a document is shared
+let updatePollingInterval = null;
+
+function setupRealtimeUpdates() {
+    // Clear any existing interval
+    if (updatePollingInterval) {
+        clearInterval(updatePollingInterval);
+    }
+    
+    // Set a new interval to check for updates every 2 seconds
+    updatePollingInterval = setInterval(checkForUpdates, 2000);
+}
+
+// Function to check for updates to the current document
+async function checkForUpdates() {
     if (!currentClassId) return;
     
     try {
-        const content = {
-            text: editor.getValue(),
-            language: document.getElementById('languageSelect').value
-        };
-
-        const classData = classesMap.get(currentClassId);
-        updateSaveStatus('Saving...');
-
-        const response = await fetch(`/api/notes/${currentClassId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                content: JSON.stringify(content),
-                class_name: classData.class_name
-            })
-        });
-
-        if (response.ok) {
-            updateSaveStatus('All changes saved');
-            
-            if (classData) {
-                classData.last_updated = new Date().toISOString();
-                await loadClassList();
+        // Add a cache-busting parameter to avoid cached responses
+        const timestamp = Date.now();
+        const response = await fetch(`/api/notes/${currentClassId}?timestamp=${timestamp}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to check for updates');
+        }
+        
+        const data = await response.json();
+        
+        if (data.content) {
+            try {
+                const contentObj = JSON.parse(data.content);
+                const currentValue = editor.getValue();
+                
+                // Only update if:
+                // 1. The content has changed
+                // 2. The editor doesn't have focus (to avoid disrupting current editing)
+                // 3. The content wasn't just saved by this editor instance (to avoid update loops)
+                if (contentObj.text !== currentValue && !editor.hasTextFocus() && !recentlySaved) {
+                    // Store cursor position
+                    const position = editor.getPosition();
+                    
+                    // Update content
+                    editor.setValue(contentObj.text);
+                    
+                    // Restore cursor position if possible
+                    if (position) {
+                        editor.setPosition(position);
+                    }
+                    
+                    // Show toast notification
+                    showToast('Document updated with changes from another user', 'info');
+                    
+                    // Update language if it changed
+                    if (contentObj.language && contentObj.language !== editor.getModel().getLanguageId()) {
+                        document.getElementById('languageSelect').value = contentObj.language;
+                        monaco.editor.setModelLanguage(editor.getModel(), contentObj.language);
+                    }
+                    
+                    // Update class data
+                    const classData = classesMap.get(currentClassId);
+                    if (classData) {
+                        classData.last_updated = data.last_updated || new Date().toISOString();
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing updated content', e);
             }
         }
     } catch (error) {
-        console.error('Failed to save:', error);
+        console.error('Error checking for updates:', error);
+    }
+}
+
+// Track recent saves to prevent update loops
+let recentlySaved = false;
+let recentlySavedTimeout = null;
+
+// Enhanced updateNotes function with better collaborative features
+async function updateNotes() {
+    // Only save if a class is selected and editor exists
+    if (!currentClassId || !editor) return;
+    
+    // Update save status
+    updateSaveStatus('saving');
+
+    try {
+        // Get the current content and language
+        const text = editor.getValue();
+        const language = editor.getModel().getLanguageId();
+        
+        // Get formatting options if they exist
+        const formatOptions = {};
+        const enableMarkdown = document.getElementById('enableMarkdown');
+        const enableHTML = document.getElementById('enableHTML');
+        
+        if (enableMarkdown) formatOptions.enableMarkdown = enableMarkdown.checked;
+        if (enableHTML) formatOptions.enableHTML = enableHTML.checked;
+        
+        // Create content object
+        const content = {
+            text: text,
+            language: language,
+            formatOptions: formatOptions,
+            timestamp: Date.now()
+        };
+
+        // Send data to server
+        const response = await fetch(`/api/notes/${currentClassId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                content: JSON.stringify(content)
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save');
+        }
+
+        // Update the class map with new data
+        if (classesMap.has(currentClassId)) {
+            const classData = classesMap.get(currentClassId);
+            classData.last_updated = new Date().toISOString();
+        }
+        
+        // Set flag to prevent update loops
+        recentlySaved = true;
+        
+        // Clear any existing timeout
+        if (recentlySavedTimeout) {
+            clearTimeout(recentlySavedTimeout);
+        }
+        
+        // Reset flag after a short delay
+        recentlySavedTimeout = setTimeout(() => {
+            recentlySaved = false;
+        }, 1000);
+
+        // Update save status
+        updateSaveStatus('saved');
+    } catch (error) {
+        console.error('Error saving notes:', error);
+        updateSaveStatus('error');
         showToast('Failed to save changes', 'error');
     }
 }
@@ -515,19 +806,59 @@ async function updateNotes() {
 function showShareModal() {
     if (!currentClassId) return;
     
-    // Use the absolute URL with view parameter
-    const shareUrl = `${window.location.origin}/view/${currentClassId}`;
+    // Get the share modal
+    const modal = new bootstrap.Modal(document.getElementById('shareModal'));
+    
+    // Reset the permission switch to read-only by default
+    document.getElementById('shareEditPermission').checked = false;
+    
+    // Generate the share URL (without permissions initially)
+    updateShareUrl();
+    
+    // Generate QR code for the current URL
+    generateQrCode();
+    
+    modal.show();
+}
+
+// Update share URL based on permission toggle
+function updateShareUrl() {
+    const allowEdit = document.getElementById('shareEditPermission').checked;
+    
+    // Base URL for viewing
+    const baseUrl = `${window.location.origin}/view/${currentClassId}`;
+    
+    // Create different URLs for view-only vs edit mode
+    const shareUrl = allowEdit ? 
+        `${baseUrl}?edit=true` : 
+        baseUrl;
+    
+    // Update the modal input field
     document.getElementById('modal-share-url').value = shareUrl;
     
-    // Generate QR code
+    // Update QR code
+    generateQrCode();
+}
+
+// Generate QR code for sharing
+function generateQrCode() {
+    const shareUrl = document.getElementById('modal-share-url').value;
     const qrContainer = document.querySelector('.qr-code-container');
-    qrContainer.innerHTML = '';
-    QRCode.toCanvas(qrContainer, shareUrl, { width: 200 }, function (error) {
-        if (error) console.error(error);
-    });
     
-    const modal = new bootstrap.Modal(document.getElementById('shareModal'));
-    modal.show();
+    // Clear existing content
+    qrContainer.innerHTML = '';
+    
+    // Generate new QR code
+    QRCode.toCanvas(qrContainer, shareUrl, { 
+        width: 200,
+        margin: 1,
+        color: {
+            dark: '#000000',
+            light: '#ffffff'
+        }
+    }, function(error) {
+        if (error) console.error('Error generating QR code:', error);
+    });
 }
 
 // Copy modal share URL
@@ -539,6 +870,10 @@ function copyModalShareUrl() {
     const button = document.getElementById('modal-copy-btn');
     const originalText = button.innerHTML;
     button.innerHTML = '<i class="bi bi-check"></i> Copied!';
+    
+    // Show toast notification
+    showToast('Share link copied to clipboard', 'success');
+    
     setTimeout(() => {
         button.innerHTML = originalText;
     }, 2000);
@@ -609,13 +944,24 @@ async function login() {
     }
 }
 
+// Update the checkSession function to load classes after session verification
 async function checkSession() {
     try {
         const response = await fetch('/api/check-session', {
             credentials: 'include'
         });
+        
         if (!response.ok) {
             window.location.href = '/login';
+            return;
+        }
+        
+        // If we're on the editor page, make sure classes are loaded
+        if (window.location.pathname === '/editor' || window.location.pathname === '/editor/') {
+            // Load classes if they haven't been loaded yet
+            if (classesMap.size === 0) {
+                await loadClassList();
+            }
         }
     } catch (error) {
         console.error('Session check failed:', error);
@@ -625,9 +971,6 @@ async function checkSession() {
 
 // Check session every 5 minutes
 setInterval(checkSession, 300000);
-
-// Check session on page load
-document.addEventListener('DOMContentLoaded', checkSession);
 
 function initializeUI() {
     // Set user email in header
@@ -688,4 +1031,85 @@ function updateSaveStatus(status) {
             saveStatus.classList.remove('visible');
         }, 2000);
     }
+}
+
+// Add this new function to initialize the format toolbar with proper null checks
+function initializeFormatToolbar() {
+    // Add event listeners to format buttons if they exist
+    document.querySelectorAll('.format-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const action = e.currentTarget.getAttribute('data-action');
+            const param = e.currentTarget.getAttribute('data-param');
+            
+            if (formatOperations[action]) {
+                formatOperations[action](param);
+                editor.focus();
+            }
+        });
+    });
+    
+    // Color picker handling - Add null check
+    const colorPicker = document.getElementById('colorPicker');
+    if (colorPicker) {
+        colorPicker.addEventListener('change', (e) => {
+            formatOperations.textColor(e.target.value);
+            editor.focus();
+        });
+    }
+    
+    // Language for code block - Add null check
+    const codeBlockLanguage = document.getElementById('codeBlockLanguage');
+    const addCodeBlock = document.getElementById('addCodeBlock');
+    if (codeBlockLanguage && addCodeBlock) {
+        codeBlockLanguage.addEventListener('change', (e) => {
+            const language = e.target.value;
+            addCodeBlock.setAttribute('data-param', language);
+        });
+    }
+}
+
+// Add a function to copy code from code snippets
+function copyCode(button) {
+    const codeBlock = button.closest('.code-snippet').querySelector('code');
+    const text = codeBlock.textContent;
+    
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy text: ', err);
+        showToast('Failed to copy code', 'error');
+    });
+}
+
+// Expose the copyCode function globally
+window.copyCode = copyCode;
+
+// Add a function to create copyable code blocks
+function createCopyableCodeBlock() {
+    const selection = editor.getSelection();
+    const selectedText = editor.getModel().getValueInRange(selection);
+    const language = document.getElementById('languageSelect').value;
+    
+    // Create HTML for a copyable code block
+    const codeBlock = `
+<div class="code-snippet">
+    <div class="code-header">
+        <span class="language-label">${language}</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+    <pre class="language-${language}"><code>${selectedText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+</div>`;
+    
+    editor.executeEdits('', [{
+        range: selection,
+        text: codeBlock,
+        forceMoveMarkers: true
+    }]);
 } 

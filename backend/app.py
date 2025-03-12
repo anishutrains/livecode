@@ -283,44 +283,34 @@ def login():
             session['user'] = email
             session['authenticated'] = True
             
-            # Create response
-            response = make_response(jsonify({
-                "success": True,
-                "redirect": "/editor"
-            }))
-            
             # Log session details for debugging
             app.logger.info(f"Development login - Session created: {session}")
-            app.logger.info(f"Response cookies: {response.headers.get('Set-Cookie')}")
             
-            return response
+            # Force the session to be saved immediately
+            session.modified = True
+            
+            return jsonify({
+                "success": True,
+                "redirect": "/editor",
+                "session_id": session.sid if hasattr(session, 'sid') else None
+            })
         
-        # if email == "admin@utrains.com" and password == "admin":
-        #     # Clear and set new session
-        #     session.clear()
-        #     session.permanent = True
-        #     session['user'] = email
-        #     session['authenticated'] = True
-            
-        #     # Create response
-        #     response = make_response(jsonify({
-        #         "success": True,
-        #         "redirect": "/editor"
-        #     }))
-            
-        #     # Let Flask handle the session cookie
-        #     return response
-            
-        # else:
-        #     app.logger.warning("Login failed - invalid credentials")
-        #     return jsonify({"success": False, "error": "Invalid credentials"}), 401
-
         if check_password_hash(user['password_hash'], password):
             session.clear()
             session.permanent = True
             session['user'] = email
             session['authenticated'] = True
-            return jsonify({'success': True, 'redirect': '/editor'})
+            
+            # Force the session to be saved
+            session.modified = True
+            
+            app.logger.info(f"Production login - Session created: {session}")
+            
+            return jsonify({
+                'success': True, 
+                'redirect': '/editor',
+                "session_id": session.sid if hasattr(session, 'sid') else None
+            })
         
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
                 
@@ -392,6 +382,7 @@ def get_notes(classroom_id):
     try:
         # Check if this is a view-only request (from shared link)
         is_view_only = request.args.get('view') == 'true'
+        allow_edit = request.args.get('edit') == 'true'
         
         # Get cached or fresh data
         timestamp = int(time.time() / 2)
@@ -404,7 +395,8 @@ def get_notes(classroom_id):
                     'content': data.get('content', ''),
                     'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
                     'last_updated': data.get('last_updated'),
-                    'view_only': True
+                    'view_only': not allow_edit,
+                    'allow_edit': allow_edit
                 })
             else:
                 # For editor access, check authentication
@@ -419,13 +411,15 @@ def get_notes(classroom_id):
                     'content': data.get('content', ''),
                     'class_name': data.get('class_name', f'Class {classroom_id.split("-")[1]}'),
                     'last_updated': data.get('last_updated'),
-                    'view_only': False
+                    'view_only': False,
+                    'allow_edit': True
                 })
                 
         return jsonify({
             'content': '',
             'class_name': f'Class {classroom_id.split("-")[1]}',
-            'view_only': is_view_only
+            'view_only': not allow_edit,
+            'allow_edit': allow_edit
         })
     except Exception as e:
         print('Error fetching notes:', str(e))
@@ -433,14 +427,20 @@ def get_notes(classroom_id):
 
 @app.route('/api/notes/<classroom_id>', methods=['POST'])
 def save_notes(classroom_id):
-    if 'user' not in session:
+    # Check if it's an edit from view mode
+    is_view_edit = request.args.get('view') == 'true' and request.args.get('edit') == 'true'
+    
+    # If it's not view edit mode, ensure user is authenticated
+    if not is_view_edit and 'user' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
 
     try:
         data = request.get_json()
         content = data.get('content', '')
         class_name = data.get('class_name')
-        user_email = session['user']
+        
+        # Get user email (if authenticated) or use 'shared_editor' for view edit mode
+        user_email = session.get('user') if 'user' in session else 'shared_editor'
         
         # Get existing item first
         table = dynamodb.Table('live_notes')
@@ -450,8 +450,8 @@ def save_notes(classroom_id):
             }
         ).get('Item', {})
         
-        # Check if the note belongs to the user
-        if existing_item and existing_item.get('user_email') != user_email:
+        # For regular (non-view) mode, check if user owns the note
+        if not is_view_edit and existing_item and existing_item.get('user_email') != user_email:
             return jsonify({'error': 'Unauthorized access'}), 403
         
         # Keep existing class_name if not provided in request
@@ -460,6 +460,10 @@ def save_notes(classroom_id):
         
         # Clear the cache for this classroom
         get_cached_notes.cache_clear()
+        
+        # Preserve original owner when editing in view mode
+        if is_view_edit and existing_item and 'user_email' in existing_item:
+            user_email = existing_item['user_email']
         
         # Update the item
         response = table.put_item(
@@ -479,9 +483,12 @@ def save_notes(classroom_id):
 @app.route('/api/classes', methods=['GET'])
 def get_classes():
     if 'user' not in session:
+        app.logger.warning("User not authenticated in session when trying to get classes")
         return jsonify({'error': 'Not authenticated'}), 401
 
     user_email = session['user']
+    app.logger.info(f"Getting classes for user: {user_email}")
+    
     table = dynamodb.Table('live_notes')
     
     try:
@@ -500,9 +507,10 @@ def get_classes():
         classes = [c for c in classes if c.get('content') is not None]
         classes.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
         
+        app.logger.info(f"Found {len(classes)} classes for user {user_email}")
         return jsonify(classes)
     except Exception as e:
-        print('Error fetching classes:', str(e))
+        app.logger.error(f"Error fetching classes: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/debug')
@@ -800,8 +808,17 @@ def resend_otp():
 
 @app.route('/api/check-session')
 def check_session():
-    if 'user' in session:
-        return jsonify({"authenticated": True, "user": session['user']})
+    app.logger.info(f"Check session called. Session: {session}")
+    
+    if 'user' in session and session.get('authenticated'):
+        # Return the user email for the frontend
+        return jsonify({
+            "authenticated": True, 
+            "user": session['user'],
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    app.logger.warning("Session check failed - not authenticated")
     return jsonify({"authenticated": False}), 401
 
 @app.errorhandler(Exception)
