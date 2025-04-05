@@ -18,12 +18,26 @@ echo "Project directory: $PROJECT_DIR"
 
 # Update system
 echo "Updating system packages..."
-sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
+# Set non-interactive frontend for package installation
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get update
+sudo -E apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
 
-# First, stop services
-sudo systemctl stop nginx
-sudo systemctl stop livecode
+# First, stop services if they exist
+echo "Stopping services if they exist..."
+if systemctl is-active --quiet nginx; then
+    sudo systemctl stop nginx
+    echo "Nginx stopped"
+else
+    echo "Nginx was not running"
+fi
+
+if systemctl is-active --quiet livecode; then
+    sudo systemctl stop livecode
+    echo "Livecode service stopped"
+else
+    echo "Livecode service was not running"
+fi
 
 # Create directories if they don't exist
 sudo mkdir -p $APP_DIR
@@ -81,6 +95,8 @@ sudo find $APP_DIR/frontend/static -type d -exec chmod 755 {} \;
 sudo find $APP_DIR/frontend/static -type f -exec chmod 644 {} \;
 
 # Set log directory permissions
+sudo chown -R ubuntu:ubuntu $APP_DIR/logs
+sudo chmod -R 755 $APP_DIR/logs
 sudo chown -R ubuntu:ubuntu /var/log/livecode
 sudo chmod -R 755 /var/log/livecode
 
@@ -175,7 +191,7 @@ Environment="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
 Environment="AWS_DEFAULT_REGION=${AWS_REGION}"
 Environment="FLASK_SECRET_KEY=your-super-secret-key-that-stays-the-same"
 
-ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app
+ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app --log-file $APP_DIR/logs/gunicorn.log --log-level debug
 
 Restart=always
 RestartSec=5

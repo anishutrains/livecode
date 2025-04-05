@@ -47,7 +47,8 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+    SESSION_COOKIE_DOMAIN='.livecode.awscertif.site' if os.environ.get('FLASK_ENV') == 'production' else None
 )
 
 # Configure session interface
@@ -58,9 +59,10 @@ CORS(app, supports_credentials=True, resources={
     r"/*": {
         "origins": ["https://livecode.awscertif.site", "http://localhost:5000"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "expose_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+        "expose_headers": ["Content-Type", "Authorization", "Set-Cookie"],
+        "supports_credentials": True,
+        "max_age": 3600
     }
 })
 
@@ -182,13 +184,8 @@ def setup_logging():
     console_handler.setFormatter(formatter)
     handlers.append(console_handler)
 
-    # Add file handler based on environment
-    if is_production:
-        # In production, use /var/log/classroom-notes/
-        log_dir = '/var/log/classroom-notes'
-    else:
-        # In development, use logs/ in project directory
-        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    # Always use logs/ in the app directory for consistency
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
     
     # Create log directory if it doesn't exist
     os.makedirs(log_dir, exist_ok=True)
@@ -284,19 +281,10 @@ def login():
             app.logger.error(f"Traceback: {traceback.format_exc()}")
             return jsonify({'success': False, 'error': 'Server error'}), 500
 
-        if not user:
-            app.logger.warning(f"Login failed: User not found - {email}")
-            return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
-
-        if not user.get('verified'):
-            app.logger.warning(f"Login failed: User not verified - {email}")
-            return jsonify({'success': False, 'error': 'Please verify your email first'}), 401
-
-        # Check if we're in development
+        # For development, accept any login
         is_development = os.environ.get('FLASK_ENV') != 'production'
         app.logger.info(f"Environment: {'development' if is_development else 'production'}")
         
-        # For development, accept any login
         if is_development:
             app.logger.info(f"Development mode: accepting login for {email}")
             session.clear()
@@ -317,6 +305,15 @@ def login():
                 "session_id": session.sid if hasattr(session, 'sid') else None
             })
         
+        # In production, check if user exists and is verified
+        if not user:
+            app.logger.warning(f"Login failed: User not found - {email}")
+            return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+        if not user.get('verified', False):
+            app.logger.warning(f"Login failed: User not verified - {email}")
+            return jsonify({'success': False, 'error': 'Please verify your email first'}), 401
+
         # Check password
         app.logger.info(f"Checking password for user: {email}")
         if check_password_hash(user['password_hash'], password):
@@ -974,6 +971,59 @@ def debug_login():
             'request_headers': dict(request.headers),
             'request_cookies': dict(request.cookies),
             'current_session': dict(session) if session else None
+        }
+        
+        return jsonify(debug_info)
+    else:
+        return jsonify({'error': 'Debug endpoints disabled in production'}), 403
+
+@app.route('/debug/login-status', methods=['GET'])
+def debug_login_status():
+    """Debug endpoint to check login status"""
+    if os.environ.get('FLASK_ENV') != 'production':
+        # Check if user is authenticated
+        is_authenticated = 'user' in session and session.get('authenticated', False)
+        
+        # Get user data if authenticated
+        user_data = None
+        if is_authenticated:
+            try:
+                users_table = dynamodb.Table('users')
+                user = users_table.get_item(
+                    Key={'email': session['user']}
+                ).get('Item')
+                
+                if user:
+                    # Remove sensitive data
+                    user_data = {
+                        'email': user.get('email'),
+                        'name': user.get('name'),
+                        'verified': user.get('verified', False),
+                        'created_at': user.get('created_at')
+                    }
+            except Exception as e:
+                user_data = {'error': str(e)}
+        
+        # Get session data
+        session_data = {
+            'session_exists': bool(session),
+            'session_contents': dict(session),
+            'is_authenticated': is_authenticated,
+            'user': session.get('user') if is_authenticated else None
+        }
+        
+        # Get cookie data
+        cookie_data = {
+            'cookies': dict(request.cookies),
+            'session_cookie': request.cookies.get(app.config.get('SESSION_COOKIE_NAME'))
+        }
+        
+        debug_info = {
+            'is_authenticated': is_authenticated,
+            'user_data': user_data,
+            'session_data': session_data,
+            'cookie_data': cookie_data,
+            'request_headers': dict(request.headers)
         }
         
         return jsonify(debug_info)
