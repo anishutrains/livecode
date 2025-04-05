@@ -44,6 +44,7 @@ sudo mkdir -p $APP_DIR
 sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
 sudo mkdir -p $APP_DIR/logs
 sudo mkdir -p /var/log/livecode
+sudo mkdir -p /var/log/classroom-notes
 
 # Set initial ownership to ubuntu user
 sudo chown -R ubuntu:ubuntu $APP_DIR
@@ -101,15 +102,19 @@ sudo find $APP_DIR/frontend/static -type f -exec chmod 644 {} \;
 # Set log directory permissions
 sudo chown -R ubuntu:ubuntu /var/log/livecode
 sudo chmod -R 755 /var/log/livecode
+sudo chown -R ubuntu:ubuntu /var/log/classroom-notes
+sudo chmod -R 755 /var/log/classroom-notes
 
 # Verify permissions
 echo "Verifying permissions..."
 ls -la $APP_DIR/frontend/static/css/style.css
 ls -la $APP_DIR/frontend/static/js/login.js
 ls -la $APP_DIR/.env
+ls -la /var/log/classroom-notes
 sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
 sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
 sudo -u ubuntu test -r $APP_DIR/.env && echo "Can read .env" || echo "Cannot read .env"
+sudo -u ubuntu test -w /var/log/classroom-notes && echo "Can write to classroom-notes log dir" || echo "Cannot write to classroom-notes log dir"
 
 # Configure Nginx
 sudo tee /etc/nginx/nginx.conf << 'EOF'
