@@ -609,47 +609,63 @@ async function selectClass(classId) {
         // Enable editor
         editor.updateOptions({ readOnly: false });
 
+        // Store current content before loading
+        const currentContent = editor.getValue();
+        
         // Show loading state
         editor.setValue('Loading...');
 
-        // Load notes
-        const response = await fetch(`/api/notes/${classId}`);
-        const data = await response.json();
+        try {
+            // Load notes
+            const response = await fetch(`/api/notes/${classId}`);
+            const data = await response.json();
 
-        if (data.content) {
-            try {
-                const content = JSON.parse(data.content);
-                editor.setValue(content.text || '');
-                
-                // Set language if present
-                if (content.language) {
-                    document.getElementById('languageSelect').value = content.language;
-                    monaco.editor.setModelLanguage(editor.getModel(), content.language);
-                }
-                
-                // Set format options if present
-                if (content.formatOptions) {
-                    const enableMarkdown = document.getElementById('enableMarkdown');
-                    const enableHTML = document.getElementById('enableHTML');
+            if (data.content) {
+                try {
+                    const content = JSON.parse(data.content);
+                    editor.setValue(content.text || '');
                     
-                    if (enableMarkdown) enableMarkdown.checked = content.formatOptions.enableMarkdown;
-                    if (enableHTML) enableHTML.checked = content.formatOptions.enableHTML;
+                    // Set language if present
+                    if (content.language) {
+                        document.getElementById('languageSelect').value = content.language;
+                        monaco.editor.setModelLanguage(editor.getModel(), content.language);
+                    }
+                    
+                    // Set format options if present
+                    if (content.formatOptions) {
+                        const enableMarkdown = document.getElementById('enableMarkdown');
+                        const enableHTML = document.getElementById('enableHTML');
+                        
+                        if (enableMarkdown) enableMarkdown.checked = content.formatOptions.enableMarkdown;
+                        if (enableHTML) enableHTML.checked = content.formatOptions.enableHTML;
+                    }
+                } catch (e) {
+                    editor.setValue(data.content);
                 }
-            } catch (e) {
-                editor.setValue(data.content);
+            } else {
+                editor.setValue('');
             }
-        } else {
-            editor.setValue('');
-        }
 
-        // Update last accessed time
-        classData.last_accessed = new Date().toISOString();
-        
-        // Set up polling for updates from viewers
-        setupRealtimeUpdates();
+            // Update last accessed time
+            classData.last_accessed = new Date().toISOString();
+            
+            // Set up polling for updates from viewers
+            setupRealtimeUpdates();
+        } catch (error) {
+            console.error('Failed to load notes:', error);
+            showToast('Failed to load notes', 'error');
+            
+            // Restore previous content if it exists and isn't just "Loading..."
+            if (currentContent && currentContent !== 'Loading...') {
+                editor.setValue(currentContent);
+            } else {
+                // If there was no previous content, set to empty string
+                editor.setValue('');
+            }
+        }
     } catch (error) {
-        console.error('Failed to load notes:', error);
-        showToast('Failed to load notes', 'error');
+        console.error('Error in selectClass:', error);
+        showToast('An error occurred while selecting the class', 'error');
     }
 }
 
