@@ -3,7 +3,7 @@ let currentClassId = null;
 let saveTimeout = null;
 let classesMap = new Map();
 
-// Add theme definitions
+// Add theme definitions ok
 const editorThemes = {
     dracula: {
         base: 'vs-dark',
