@@ -5,13 +5,19 @@ document.getElementById('login-form').addEventListener('submit', async function(
     const password = document.getElementById('password').value;
     const remember = document.getElementById('remember').checked;
     
+    // Get the submit button and store its original text
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    
+    console.log('Login attempt:', { email, remember });
+    console.log('Current cookies:', document.cookie);
+    
     try {
         // Show loading state
-        const submitBtn = this.querySelector('button[type="submit"]');
-        const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Logging in...';
         submitBtn.disabled = true;
 
+        console.log('Sending login request to server...');
         const response = await fetch('/login', {
             method: 'POST',
             headers: {
@@ -21,11 +27,18 @@ document.getElementById('login-form').addEventListener('submit', async function(
             credentials: 'include'
         });
         
+        console.log('Login response status:', response.status);
+        console.log('Login response headers:', Object.fromEntries([...response.headers]));
+        
         if (!response.ok) {
+            console.error('Login failed with status:', response.status);
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Error details:', errorData);
             throw new Error('Login failed');
         }
         
         const data = await response.json();
+        console.log('Login response data:', data);
         
         if (data.success) {
             // Show success message
@@ -41,14 +54,15 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 window.location.href = data.redirect;
             }, 1000);
         } else {
+            console.error('Login failed with message:', data.error);
             showToast(data.error || 'Login failed', 'error');
         }
     } catch (error) {
         console.error('Login error:', error);
+        console.error('Error stack:', error.stack);
         showToast('Login failed. Please try again.', 'error');
     } finally {
         // Restore button state
-        const submitBtn = this.querySelector('button[type="submit"]');
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
     }

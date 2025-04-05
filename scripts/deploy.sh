@@ -18,33 +18,18 @@ echo "Project directory: $PROJECT_DIR"
 
 # Update system
 echo "Updating system packages..."
-# Set non-interactive frontend for package installation
-export DEBIAN_FRONTEND=noninteractive
-sudo -E apt-get update
-sudo -E apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
+sudo apt-get update
+sudo apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
 
-# First, stop services if they exist
-echo "Stopping services if they exist..."
-if systemctl is-active --quiet nginx; then
-    sudo systemctl stop nginx
-    echo "Nginx stopped"
-else
-    echo "Nginx was not running"
-fi
-
-if systemctl is-active --quiet livecode; then
-    sudo systemctl stop livecode
-    echo "Livecode service stopped"
-else
-    echo "Livecode service was not running"
-fi
+# First, stop services
+sudo systemctl stop nginx
+sudo systemctl stop livecode
 
 # Create directories if they don't exist
 sudo mkdir -p $APP_DIR
 sudo mkdir -p $APP_DIR/frontend/static/{css,js,images}
 sudo mkdir -p $APP_DIR/logs
 sudo mkdir -p /var/log/livecode
-sudo mkdir -p /var/log/classroom-notes
 
 # Set initial ownership to ubuntu user
 sudo chown -R ubuntu:ubuntu $APP_DIR
@@ -86,12 +71,8 @@ sudo chmod 755 $APP_DIR/frontend
 sudo find $APP_DIR -type d -exec chmod 755 {} \;
 sudo find $APP_DIR -type f -exec chmod 644 {} \;
 
-# Set specific permissions for .env file - make it readable by the application
-# Change from 600 to 644 to allow reading by the application
-sudo chmod 644 $APP_DIR/.env
-sudo chown ubuntu:ubuntu $APP_DIR/.env
-
-# Set virtual environment permissions
+# Set specific permissions
+sudo chmod 600 $APP_DIR/.env
 sudo chmod -R 755 $APP_DIR/venv
 
 # Set static files ownership and permissions
@@ -102,19 +83,13 @@ sudo find $APP_DIR/frontend/static -type f -exec chmod 644 {} \;
 # Set log directory permissions
 sudo chown -R ubuntu:ubuntu /var/log/livecode
 sudo chmod -R 755 /var/log/livecode
-sudo chown -R ubuntu:ubuntu /var/log/classroom-notes
-sudo chmod -R 755 /var/log/classroom-notes
 
 # Verify permissions
 echo "Verifying permissions..."
 ls -la $APP_DIR/frontend/static/css/style.css
 ls -la $APP_DIR/frontend/static/js/login.js
-ls -la $APP_DIR/.env
-ls -la /var/log/classroom-notes
 sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
 sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
-sudo -u ubuntu test -r $APP_DIR/.env && echo "Can read .env" || echo "Cannot read .env"
-sudo -u ubuntu test -w /var/log/classroom-notes && echo "Can write to classroom-notes log dir" || echo "Cannot write to classroom-notes log dir"
 
 # Configure Nginx
 sudo tee /etc/nginx/nginx.conf << 'EOF'
