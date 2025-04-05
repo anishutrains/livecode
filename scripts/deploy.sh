@@ -18,8 +18,10 @@ echo "Project directory: $PROJECT_DIR"
 
 # Update system
 echo "Updating system packages..."
-sudo apt-get update
-sudo apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
+# Set non-interactive frontend for package installation
+export DEBIAN_FRONTEND=noninteractive
+sudo -E apt-get update
+sudo -E apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
 
 # First, stop services
 sudo systemctl stop nginx
