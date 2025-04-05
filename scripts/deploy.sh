@@ -23,9 +23,21 @@ export DEBIAN_FRONTEND=noninteractive
 sudo -E apt-get update
 sudo -E apt-get install -y python3-pip python3-venv nginx certbot python3-certbot-nginx
 
-# First, stop services
-sudo systemctl stop nginx
-sudo systemctl stop livecode
+# First, stop services if they exist
+echo "Stopping services if they exist..."
+if systemctl is-active --quiet nginx; then
+    sudo systemctl stop nginx
+    echo "Nginx stopped"
+else
+    echo "Nginx was not running"
+fi
+
+if systemctl is-active --quiet livecode; then
+    sudo systemctl stop livecode
+    echo "Livecode service stopped"
+else
+    echo "Livecode service was not running"
+fi
 
 # Create directories if they don't exist
 sudo mkdir -p $APP_DIR
