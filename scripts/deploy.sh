@@ -85,8 +85,12 @@ sudo chmod 755 $APP_DIR/frontend
 sudo find $APP_DIR -type d -exec chmod 755 {} \;
 sudo find $APP_DIR -type f -exec chmod 644 {} \;
 
-# Set specific permissions
-sudo chmod 600 $APP_DIR/.env
+# Set specific permissions for .env file - make it readable by the application
+# Change from 600 to 644 to allow reading by the application
+sudo chmod 644 $APP_DIR/.env
+sudo chown ubuntu:ubuntu $APP_DIR/.env
+
+# Set virtual environment permissions
 sudo chmod -R 755 $APP_DIR/venv
 
 # Set static files ownership and permissions
@@ -102,8 +106,10 @@ sudo chmod -R 755 /var/log/livecode
 echo "Verifying permissions..."
 ls -la $APP_DIR/frontend/static/css/style.css
 ls -la $APP_DIR/frontend/static/js/login.js
+ls -la $APP_DIR/.env
 sudo -u www-data test -r $APP_DIR/frontend/static/css/style.css && echo "Can read style.css" || echo "Cannot read style.css"
 sudo -u www-data test -r $APP_DIR/frontend/static/js/login.js && echo "Can read login.js" || echo "Cannot read login.js"
+sudo -u ubuntu test -r $APP_DIR/.env && echo "Can read .env" || echo "Cannot read .env"
 
 # Configure Nginx
 sudo tee /etc/nginx/nginx.conf << 'EOF'
