@@ -43,29 +43,28 @@ app = Flask(__name__,
 app.config.from_object(get_config())
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production',#True,
+    SESSION_COOKIE_SECURE=os.environ.get('FLASK_ENV') == 'production',
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_NAME='livecode_session',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24)
 )
-CORS(app, 
-    supports_credentials=True,
-    resources={
-        r"/*": {
-            "origins": ["https://livecode.awscertif.site"],
-            "methods": ["GET", "POST", "OPTIONS"],
-            "allow_headers": ["Content-Type"],
-            "expose_headers": ["Set-Cookie"],
-            "supports_credentials": True
-        }
-    }
-)
-print(AWS_ACCESS_KEY)
-print(AWS_SECRET_KEY)
-print(REGION)
 
-# Initialize AWS DynamoDB
+# Configure session interface
+app.session_interface = SecureCookieSessionInterface()
+
+# Initialize CORS
+CORS(app, supports_credentials=True, resources={
+    r"/*": {
+        "origins": ["https://livecode.awscertif.site", "http://localhost:5000"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
+
+# Initialize DynamoDB
 dynamodb = boto3.resource('dynamodb',
     aws_access_key_id=AWS_ACCESS_KEY,
     aws_secret_access_key=AWS_SECRET_KEY,
@@ -260,17 +259,27 @@ def login():
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
+        remember = data.get('remember', False)
 
+        # Log login attempt
+        app.logger.info(f"Login attempt for email: {email}")
+        
         # Get user data
         users_table = dynamodb.Table('users')
-        user = users_table.get_item(
-            Key={'email': email}
-        ).get('Item')
+        try:
+            user = users_table.get_item(
+                Key={'email': email}
+            ).get('Item')
+        except Exception as e:
+            app.logger.error(f"Error accessing DynamoDB: {str(e)}")
+            return jsonify({'success': False, 'error': 'Server error'}), 500
 
         if not user:
+            app.logger.warning(f"Login failed: User not found - {email}")
             return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
         if not user.get('verified'):
+            app.logger.warning(f"Login failed: User not verified - {email}")
             return jsonify({'success': False, 'error': 'Please verify your email first'}), 401
 
         # Check if we're in development
@@ -295,6 +304,7 @@ def login():
                 "session_id": session.sid if hasattr(session, 'sid') else None
             })
         
+        # Check password
         if check_password_hash(user['password_hash'], password):
             session.clear()
             session.permanent = True
@@ -304,7 +314,7 @@ def login():
             # Force the session to be saved
             session.modified = True
             
-            app.logger.info(f"Production login - Session created: {session}")
+            app.logger.info(f"Production login successful - Session created: {session}")
             
             return jsonify({
                 'success': True, 
@@ -312,6 +322,7 @@ def login():
                 "session_id": session.sid if hasattr(session, 'sid') else None
             })
         
+        app.logger.warning(f"Login failed: Invalid password - {email}")
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
                 
     return render_template('login.html')
@@ -867,13 +878,26 @@ def serve_static(filename):
 
 @app.route('/debug/session')
 def debug_session():
-    return jsonify({
-        'session': dict(session),
-        'cookies': {k: v for k, v in request.cookies.items()},
-        'environment': os.getenv('FLASK_ENV', 'development'),
-        'secure_cookie': app.config.get('SESSION_COOKIE_SECURE'),
-        'cookie_domain': app.config.get('SESSION_COOKIE_DOMAIN')
-    })
+    """Debug endpoint to check session status"""
+    if os.environ.get('FLASK_ENV') != 'production':
+        session_info = {
+            'session_exists': bool(session),
+            'session_contents': dict(session),
+            'cookies': dict(request.cookies),
+            'headers': dict(request.headers),
+            'is_authenticated': session.get('authenticated', False),
+            'user': session.get('user', None),
+            'session_cookie_name': app.config.get('SESSION_COOKIE_NAME'),
+            'session_cookie_secure': app.config.get('SESSION_COOKIE_SECURE'),
+            'session_cookie_httponly': app.config.get('SESSION_COOKIE_HTTPONLY'),
+            'session_cookie_samesite': app.config.get('SESSION_COOKIE_SAMESITE'),
+            'permanent_session_lifetime': str(app.config.get('PERMANENT_SESSION_LIFETIME')),
+            'secret_key_configured': bool(app.config.get('SECRET_KEY')),
+            'flask_env': os.environ.get('FLASK_ENV')
+        }
+        return jsonify(session_info)
+    else:
+        return jsonify({'error': 'Debug endpoints disabled in production'}), 403
 
 @app.route('/test-cookie')
 def test_cookie():
