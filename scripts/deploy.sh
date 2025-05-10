@@ -3,7 +3,7 @@
 # Stop on any error
 set -e
 
-echo "Starting deployment to production..."
+echo "Starting deployment to production....."
 
 # Variables
 DOMAIN="livecode.awscertif.site"
